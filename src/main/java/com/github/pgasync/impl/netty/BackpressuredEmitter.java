@@ -14,6 +14,7 @@ import rx.internal.operators.BackpressureUtils;
 import java.util.Optional;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -25,6 +26,7 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
 
     private final BlockingDeque<Message> buffer = new LinkedBlockingDeque<>(BUFFER_SIZE);
     private final AtomicLong requested = new AtomicLong();
+    private final AtomicInteger wip = new AtomicInteger();
 
     private final ChannelHandlerContext context;
     private final Subscriber<Message> subscriber;
@@ -62,8 +64,8 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
         if (completed)
             return;
 
-        drain();
         completed = true;
+        drain();
         subscriber.onCompleted();
     }
 
@@ -72,19 +74,14 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
         if (completed)
             return;
 
-        drain();
         completed = true;
         subscriber.onError(e);
     }
 
     @Override
-    public synchronized void onNext(Message t) {
-        try {
-            buffer.addFirst(t);
-            drain();
-        } catch (Exception e) {
-            onError(e);
-        }
+    public void onNext(Message t) {
+        buffer.addFirst(t);
+        drain();
     }
 
     @Override
@@ -115,26 +112,47 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
         return subscriber.isUnsubscribed();
     }
 
-    private synchronized void drain() {
-        while (requested.get() > 0 && buffer.size() > 0) {
-            Optional.ofNullable(buffer.pollLast())
-                    .ifPresent(message -> {
-                        Optional<SqlException> maybeSqlException = asSqlException(message);
+    private void drain() {
+        if (wip.getAndIncrement() != 0)
+            return;
 
-                        if (!maybeSqlException.isPresent()) {
-                            if (sqlException != null && message == ReadyForQuery.INSTANCE)
-                                onError(sqlException);
-                            else
-                                subscriber.onNext(message);
-                            if (message instanceof DataRow)
-                                requested.decrementAndGet();
-                        } else
-                            maybeSqlException.ifPresent(e -> sqlException = e);
-                    });
+        int missed = 1;
+        for (; ; ) {
+            int emitted = processQueue();
+            BackpressureUtils.produced(requested, emitted);
+
+            if (requested.get() - buffer.size() > 0)
+                context.channel().read();
+
+            missed = wip.addAndGet(-missed);
+            if (missed == 0)
+                return;
+        }
+    }
+
+    private int processQueue() {
+        int emitted = 0;
+
+        while (requested.get() > 0 && buffer.size() > 0) {
+            Message message = buffer.pollLast();
+            Optional<SqlException> maybeSqlException = asSqlException(message);
+
+            if (completed)
+                break;
+
+            if (!maybeSqlException.isPresent()) {
+                if (sqlException != null && message == ReadyForQuery.INSTANCE)
+                    onError(sqlException);
+                else
+                    subscriber.onNext(message);
+
+                if (message instanceof DataRow)
+                    emitted++;
+            } else
+                maybeSqlException.ifPresent(e -> sqlException = e);
         }
 
-        if (requested.get() - buffer.size() > 0)
-            context.executor().submit(() -> context.channel().read());
+        return emitted;
     }
 
     @SuppressWarnings("unchecked")

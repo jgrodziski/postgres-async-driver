@@ -5,14 +5,16 @@ import org.junit.Test;
 import rx.Observable;
 import rx.schedulers.Schedulers;
 
-import java.util.UUID;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static com.github.pgasync.impl.DatabaseRule.createPoolBuilder;
-import static org.junit.Assert.assertEquals;
+import static java.util.stream.IntStream.range;
+import static org.hamcrest.core.Is.is;
+import static org.junit.Assert.assertThat;
 
 public class BackpressureTest {
     @ClassRule
@@ -21,30 +23,35 @@ public class BackpressureTest {
     @Test
     public void shouldRespectBackpressureOnSlowConsumer() {
         //given
-        int numberOfRecords = 1000;
+        List<Integer> numbers = range(0, 1000).boxed().collect(Collectors.toList());
 
-        dbr.query("CREATE TABLE BACKPRESSURE_TEST(ID VARCHAR)");
+        dbr.query("CREATE TABLE BACKPRESSURE_TEST(ID INT)");
         Observable.merge(
-                IntStream
-                        .range(0, numberOfRecords)
-                        .mapToObj(__ -> dbr.db().querySet("INSERT INTO BACKPRESSURE_TEST VALUES($1)", UUID.randomUUID().toString()))
+                shuffle(numbers)
+                        .stream()
+                        .map(__ -> dbr.db().querySet("INSERT INTO BACKPRESSURE_TEST VALUES($1)", __))
                         .collect(Collectors.toList())
         ).toCompletable().await(10, TimeUnit.SECONDS);
 
-        AtomicInteger counter = new AtomicInteger();
-
         // when
-        dbr.db().queryRows("SELECT * FROM BACKPRESSURE_TEST")
+        List<Integer> result = dbr.db()
+                .queryRows("SELECT * FROM BACKPRESSURE_TEST ORDER BY ID")
                 .observeOn(Schedulers.computation())
-                .doOnNext(__ -> {
-                    sleep();
-                    counter.incrementAndGet();
-                })
+                .doOnNext(__ -> sleep())
+                .map(__ -> __.getInt(0))
+                .toList()
+                .sorted()
                 .toBlocking()
-                .subscribe();
+                .last();
 
         // then
-        assertEquals(numberOfRecords, counter.get());
+        assertThat(result, is(numbers));
+    }
+
+    private ArrayList<Integer> shuffle(List<Integer> numbers) {
+        ArrayList<Integer> list = new ArrayList<>(numbers);
+        Collections.shuffle(list);
+        return list;
     }
 
     private void sleep() {
