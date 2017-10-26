@@ -91,15 +91,14 @@ public class TimeoutTest {
 
         //when
         Observable
-                .interval(1500, TimeUnit.MILLISECONDS)
-                .take(5)
+                .range(0, 5)
                 .map(i -> (i + 1) % 4)
                 .flatMap(i ->
                         db.queryRows("SELECT pg_sleep(" + i + ")")
-                                .timeout(2, TimeUnit.SECONDS)
+                                .timeout(1800, TimeUnit.MILLISECONDS)
                                 .map(x -> "ok")
                                 .onErrorReturn(e -> "error")
-                )
+                , 1)
                 .subscribe(testSubscriber);
 
         testSubscriber.awaitTerminalEvent();

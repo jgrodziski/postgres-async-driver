@@ -132,7 +132,6 @@ public class PgConnection implements Connection {
 
     static Observable.Operator<Row,? super Message> toRow(DataConverter dataConverter) {
         return subscriber -> new Subscriber<Message>(subscriber) {
-
             Map<String, PgColumn> columns;
 
             @Override
@@ -143,10 +142,12 @@ public class PgConnection implements Connection {
                     subscriber.onNext(new PgRow((DataRow) message, columns, dataConverter));
                 }
             }
+
             @Override
             public void onError(Throwable e) {
                 subscriber.onError(e);
             }
+
             @Override
             public void onCompleted() {
                 subscriber.onCompleted();
@@ -155,8 +156,7 @@ public class PgConnection implements Connection {
     }
 
     static Observable.Operator<ResultSet,? super Message> toResultSet(DataConverter dataConverter) {
-        return subscriber -> new Subscriber<Message>() {
-
+        return subscriber -> new Subscriber<Message>(subscriber) {
             Map<String, PgColumn> columns;
             List<Row> rows = new ArrayList<>();
             int updated;
@@ -173,10 +173,12 @@ public class PgConnection implements Connection {
                     subscriber.onNext(new PgResultSet(columns, rows, updated));
                 }
             }
+
             @Override
             public void onError(Throwable e) {
                 subscriber.onError(e);
             }
+
             @Override
             public void onCompleted() {
                 subscriber.onCompleted();

@@ -33,6 +33,7 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
 
     private Cancellable cancellable;
     private volatile boolean completed;
+    private volatile boolean done;
     private SqlException sqlException;
 
     private BackpressuredEmitter(ChannelHandlerContext context, Subscriber<Message> subscriber) {
@@ -61,20 +62,20 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
 
     @Override
     public void onCompleted() {
-        if (completed)
+        if (done)
             return;
 
-        completed = true;
+        done = true;
         drain();
         subscriber.onCompleted();
     }
 
     @Override
     public void onError(Throwable e) {
-        if (completed)
+        if (done)
             return;
 
-        completed = true;
+        done = true;
         subscriber.onError(e);
     }
 
@@ -97,7 +98,7 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
                     try {
                         c.cancel();
                     } catch (Exception e) {
-                        if (completed)
+                        if (done)
                             LOG.error("Failed to call cancelable", e);
                         else
                             subscriber.onError(e);
@@ -136,8 +137,9 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
         while (requested.get() > 0 && buffer.size() > 0) {
             Message message = buffer.pollLast();
             Optional<SqlException> maybeSqlException = asSqlException(message);
+            completed = message instanceof ReadyForQuery;
 
-            if (completed)
+            if (done)
                 break;
 
             if (!maybeSqlException.isPresent()) {
