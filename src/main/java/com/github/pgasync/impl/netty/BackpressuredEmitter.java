@@ -36,9 +36,12 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
     private volatile boolean done;
     private SqlException sqlException;
 
-    private BackpressuredEmitter(ChannelHandlerContext context, Subscriber<Message> subscriber) {
+    private final Message messageRef;
+
+    private BackpressuredEmitter(ChannelHandlerContext context, Subscriber<Message> subscriber, Message messageRef) {
         this.context = context;
         this.subscriber = subscriber;
+        this.messageRef = messageRef;
     }
 
     boolean completed() {
@@ -65,6 +68,8 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
         if (done)
             return;
 
+        LOG.trace("{} Completed", messageRef);
+
         done = true;
         drain();
         subscriber.onCompleted();
@@ -74,6 +79,8 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
     public void onError(Throwable e) {
         if (done)
             return;
+
+        LOG.trace("{} Error", messageRef, e);
 
         done = true;
         subscriber.onError(e);
@@ -135,7 +142,8 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
         int emitted = 0;
 
         while (requested.get() > 0 && buffer.size() > 0) {
-            Message message = buffer.pollLast();
+            Message message = nextMessage();
+
             Optional<SqlException> maybeSqlException = asSqlException(message);
             completed = message instanceof ReadyForQuery;
 
@@ -157,10 +165,16 @@ class BackpressuredEmitter implements Emitter<Message>, Subscription, Producer {
         return emitted;
     }
 
+    private Message nextMessage() {
+        Message message = buffer.pollLast();
+        LOG.trace("{} Incoming message: {}", messageRef, message);
+        return message;
+    }
+
     @SuppressWarnings("unchecked")
-    static Observable.OnSubscribe<Message> create(Consumer<BackpressuredEmitter> emitter, ChannelHandlerContext context) {
+    static Observable.OnSubscribe<Message> create(Consumer<BackpressuredEmitter> emitter, ChannelHandlerContext context, Message messageRef) {
         return subscriber -> {
-            BackpressuredEmitter extEmitter = new BackpressuredEmitter(context, (Subscriber<Message>) subscriber);
+            BackpressuredEmitter extEmitter = new BackpressuredEmitter(context, (Subscriber<Message>) subscriber, messageRef);
             subscriber.add(extEmitter);
             subscriber.setProducer(extEmitter);
             emitter.accept(extEmitter);

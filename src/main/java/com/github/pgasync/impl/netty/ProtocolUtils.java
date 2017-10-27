@@ -22,7 +22,7 @@ class ProtocolUtils {
 
     static boolean isCompleteMessage(Message msg) {
         return msg == ReadyForQuery.INSTANCE
-                || (msg instanceof Authentication && !((Authentication) msg).isAuthenticationOk());
+                || (msg instanceof Authentication && !((Authentication) msg).isSuccess());
     }
 
     static boolean isErrorMessage(Message msg) {

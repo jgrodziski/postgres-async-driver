@@ -15,6 +15,7 @@
 package com.github.pgasync.impl.io;
 
 import com.github.pgasync.impl.message.ErrorResponse;
+import com.github.pgasync.impl.message.ErrorResponse.Level;
 
 import java.nio.ByteBuffer;
 
@@ -22,7 +23,7 @@ import static com.github.pgasync.impl.io.IO.getCString;
 
 /**
  * See <a href="www.postgresql.org/docs/9.3/static/protocol-message-formats.html">PostgreSQL message formats</a>
- *
+ * <p>
  * <pre>
  * ErrorResponse (B)
  *  Byte1('E')
@@ -64,7 +65,7 @@ public class ErrorResponseDecoder implements Decoder<ErrorResponse> {
             }
         }
 
-        return new ErrorResponse(level, code, message);
+        return new ErrorResponse(Level.valueOf(level), code, message);
     }
 
 }

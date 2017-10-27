@@ -14,37 +14,18 @@
 
 package com.github.pgasync.impl.message;
 
+import lombok.Value;
+
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
+@Value
 public class ErrorResponse implements Message {
-
     public enum Level {
-        ERROR, FATAL, PANIC, WARNING, NOTICE, DEBUG, INFO, LOG;
+        ERROR, FATAL, PANIC, WARNING, NOTICE, DEBUG, INFO, LOG
     }
 
-    final Level level;
-    final String code;
-    final String message;
-
-    public ErrorResponse(String levelName, String code, String message) {
-        this.level = Level.valueOf(levelName);
-        this.code = code;
-        this.message = message;
-    }
-
-    public Level getLevel() {
-        return level;
-    }
-    public String getCode() {
-        return code;
-    }
-    public String getMessage() {
-        return message;
-    }
-
-    @Override
-    public String toString() {
-        return String.format("ErrorResponse(level=%s,code=%s,message=%s)", level, code, message);
-    }
+    Level level;
+    String code;
+    String message;
 }

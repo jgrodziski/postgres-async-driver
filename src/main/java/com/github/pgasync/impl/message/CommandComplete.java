@@ -14,12 +14,14 @@
 
 package com.github.pgasync.impl.message;
 
-/**
- * @author  Antti Laisi
- */
-public class CommandComplete implements Message {
+import lombok.Value;
 
-    final int updatedRows;
+/**
+ * @author Antti Laisi
+ */
+@Value
+public class CommandComplete implements Message {
+    int updatedRows;
 
     public CommandComplete(String tag) {
         if (tag.contains("INSERT") || tag.contains("UPDATE") || tag.contains("DELETE")) {
@@ -28,14 +30,5 @@ public class CommandComplete implements Message {
         } else {
             updatedRows = 0;
         }
-    }
-
-    public int getUpdatedRows() {
-        return updatedRows;
-    }
-
-    @Override
-    public String toString() {
-        return String.format("CommandComplete(updatedRows=%d)", updatedRows);
     }
 }

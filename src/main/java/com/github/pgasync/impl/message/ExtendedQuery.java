@@ -16,9 +16,9 @@ package com.github.pgasync.impl.message;
 
 /**
  * Stateless extended query protocol messages.
- * 
+ *
  * @author Antti Laisi
  */
 public enum ExtendedQuery implements Message {
-    DESCRIBE, EXECUTE, CLOSE, SYNC;
+    DESCRIBE, EXECUTE, CLOSE, SYNC
 }

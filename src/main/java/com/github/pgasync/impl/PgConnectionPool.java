@@ -232,7 +232,7 @@ public abstract class PgConnectionPool implements ConnectionPool {
             } else {
                 houseKeepSubscribers();
 
-                if (currentSize == 0 && !subscribers.isEmpty()) {
+                while (currentSize < poolSize && !subscribers.isEmpty()) {
                     createConnection(subscribers.remove());
                 }
             }

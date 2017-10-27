@@ -14,29 +14,13 @@
 
 package com.github.pgasync.impl.message;
 
+import lombok.Value;
+
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
+@Value
 public class Authentication implements Message {
-
-    final boolean success;
-    final byte[] md5salt;
-
-    public Authentication(boolean success, byte[] md5salt) {
-        this.success = success;
-        this.md5salt = md5salt;
-    }
-
-    public byte[] getMd5Salt() {
-        return md5salt;
-    }
-
-    public boolean isAuthenticationOk() {
-        return success;
-    }
-
-    @Override
-    public String toString() {
-        return String.format("Authentication(success=%s,md5salt=%s)", success, md5salt);
-    }
+    boolean success;
+    byte[] md5salt;
 }

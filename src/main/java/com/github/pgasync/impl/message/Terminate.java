@@ -15,8 +15,13 @@
 package com.github.pgasync.impl.message;
 
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
 public enum Terminate implements Message {
-    INSTANCE
+    INSTANCE;
+
+    @Override
+    public String toString() {
+        return "Terminate()";
+    }
 }

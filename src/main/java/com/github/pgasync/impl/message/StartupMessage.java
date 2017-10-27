@@ -14,29 +14,19 @@
 
 package com.github.pgasync.impl.message;
 
+import lombok.Value;
+
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
+@Value
 public class StartupMessage implements Message {
+    private static final int protocol = 196608;
 
-    final int protocol = 196608;
-    final String username;
-    final String database;
-
-    public StartupMessage(String username, String database) {
-        this.username = username;
-        this.database = database;
-    }
+    String username;
+    String database;
 
     public int getProtocol() {
         return protocol;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public String getDatabase() {
-        return database;
     }
 }

@@ -28,6 +28,8 @@ import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import rx.Emitter;
 import rx.Emitter.BackpressureMode;
 import rx.Observable;
@@ -51,6 +53,8 @@ import static com.github.pgasync.impl.netty.ProtocolUtils.isCompleteMessage;
  * @author Antti Laisi
  */
 public class NettyPgProtocolStream implements PgProtocolStream {
+    private static final Logger LOG = LoggerFactory.getLogger(NettyPgProtocolStream.class);
+
     private final EventLoopGroup group;
     private final EventLoop eventLoop;
     private final SocketAddress address;
@@ -118,9 +122,13 @@ public class NettyPgProtocolStream implements PgProtocolStream {
 
             emitter.setCancellation(() -> {
                 ctx.channel().config().setAutoRead(true);
-                if (!emitter.completed())
+                if (!emitter.completed()) {
+                    LOG.debug("{} Cancelled, closing channel", messages[0]);
                     ctx.close();
+                }
             });
+
+            LOG.trace("{} Sending", messages[0]);
 
             if (pipeline && !eventLoop.inEventLoop()) {
                 eventLoop.submit(() -> {
@@ -134,7 +142,7 @@ public class NettyPgProtocolStream implements PgProtocolStream {
             write(messages);
         };
 
-        return Observable.unsafeCreate(BackpressuredEmitter.create(action, ctx));
+        return Observable.unsafeCreate(BackpressuredEmitter.create(action, ctx, messages[0]));
     }
 
     @Override

@@ -20,5 +20,4 @@ package com.github.pgasync.impl.message;
  * @author Antti Laisi
  */
 public interface Message {
-
 }

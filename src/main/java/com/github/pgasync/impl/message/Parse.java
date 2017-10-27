@@ -14,18 +14,12 @@
 
 package com.github.pgasync.impl.message;
 
+import lombok.Value;
+
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
+@Value
 public class Parse implements Message {
-
-    final String sql;
-
-    public Parse(String sql) {
-        this.sql = sql;
-    }
-
-    public String getQuery() {
-        return sql;
-    }
+    String query;
 }

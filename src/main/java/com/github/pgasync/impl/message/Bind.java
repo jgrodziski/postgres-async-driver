@@ -14,18 +14,12 @@
 
 package com.github.pgasync.impl.message;
 
+import lombok.Value;
+
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
+@Value
 public class Bind implements Message {
-
-    final byte[][] params;
-
-    public Bind(byte[][] params) {
-        this.params = params;
-    }
-
-    public byte[][] getParams() {
-        return params;
-    }
+    byte[][] params;
 }

@@ -14,16 +14,14 @@
 
 package com.github.pgasync.impl.message;
 
+import lombok.Value;
+
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
+@Value
 public class DataRow implements Message {
-
-    final byte[][] values;
-
-    public DataRow(byte[][] values) {
-        this.values = values;
-    }
+    byte[][] values;
 
     public byte[] getValue(int i) {
         return values[i];

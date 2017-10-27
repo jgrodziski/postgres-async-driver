@@ -15,7 +15,7 @@
 package com.github.pgasync.impl.message;
 
 /**
- * @author  Antti Laisi
+ * @author Antti Laisi
  */
 public enum ReadyForQuery implements Message {
     INSTANCE;
