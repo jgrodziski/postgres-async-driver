@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * Pool for backend connections. Callbacks are queued and executed when pool has an available
@@ -121,24 +121,34 @@ public abstract class PgConnectionPool implements ConnectionPool {
                     queued.onError(new SqlException("Connection pool is closing"));
                 }
             }
-
-            try {
-                while (currentSize > 0) {
-                    Connection connection = connections.poll();
-                    if(connection == null) {
-                        if (closingConnectionReleased.await(10, SECONDS)) {
-                            break;
-                        }
-                        continue;
-                    }
-                    currentSize--;
-                    connection.close();
-                }
-            } catch (InterruptedException e) { /* ignore */ }
-
         } finally {
             lock.unlock();
         }
+
+        AtomicBoolean done = new AtomicBoolean();
+        Observable
+                .interval(100, 5000, MILLISECONDS)
+                .doOnNext(__ -> {
+                    lock.lock();
+                    try {
+                        while (currentSize > 0) {
+                            Connection connection = connections.poll();
+                            if (connection != null) {
+                                currentSize--;
+                                connection.close();
+                            } else {
+                                break;
+                            }
+                        }
+                    } catch (Exception e) {
+                        /* ignore */
+                    } finally {
+                        lock.unlock();
+                    }
+                    done.set(currentSize == 0);
+                })
+                .takeWhile(__ -> !done.get())
+                .subscribe();
     }
 
     @Override
@@ -257,7 +267,7 @@ public abstract class PgConnectionPool implements ConnectionPool {
     private void closeConnectionQuietly(Connection connection) {
         try {
             connection.close();
-        } catch (Exception e) {
+        } catch (Exception ignored) {
         }
     }
 
