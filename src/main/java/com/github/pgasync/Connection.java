@@ -14,16 +14,24 @@
 
 package com.github.pgasync;
 
+import rx.Completable;
+import rx.Single;
+
+import java.util.concurrent.TimeUnit;
+
 /**
  * A single physical connection to PostgreSQL backend.
- * 
+ *
  * @author Antti Laisi
  */
 public interface Connection extends Db {
-
     /**
      * Closes the connection, blocks the calling thread until the connection is closed.
      */
-    void close() throws Exception;
+    Completable close();
 
+    @Override
+    Connection withTimeout(long timeout, TimeUnit timeUnit);
+
+    boolean isConnected();
 }

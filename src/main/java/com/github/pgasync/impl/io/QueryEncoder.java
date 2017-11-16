@@ -46,7 +46,7 @@ public class QueryEncoder implements Encoder<Query> {
     public void write(Query msg, ByteBuffer buffer) {
         buffer.put((byte) 'Q');
         buffer.putInt(0);
-        putCString(buffer, msg.getQuery());
+        putCString(buffer, msg.query());
         buffer.putInt(1, buffer.position() - 1);
     }
 }

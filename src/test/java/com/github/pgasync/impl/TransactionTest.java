@@ -29,7 +29,7 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for BEGIN/COMMIT/ROLLBACK.
- * 
+ *
  * @author Antti Laisi
  */
 public class TransactionTest {
@@ -81,14 +81,14 @@ public class TransactionTest {
     }
 
     @Test
-    public void shouldCommitParameterizedInsertInTransaction() throws Exception {
+    public void shouldCommitParametrizedInsertInTransaction() throws Exception {
         // Ref: https://github.com/alaisi/postgres-async-driver/issues/34
         long id = dbr.db().begin().flatMap(txn ->
-            txn.queryRows("INSERT INTO TX_TEST (ID) VALUES ($1) RETURNING ID", "35").last().flatMap(row -> {
+            txn.queryRows("INSERT INTO TX_TEST (ID) VALUES ($1) RETURNING ID", "35").last().flatMapSingle(row -> {
                 Long value = row.getLong(0);
-                return txn.commit().map(v -> value);
-            })
-        ).toBlocking().single();
+                return txn.commit().toSingleDefault(value);
+            }).toSingle()
+        ).toBlocking().value();
         assertEquals(35L, id);
     }
 

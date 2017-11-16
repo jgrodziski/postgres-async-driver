@@ -46,7 +46,7 @@ public class PasswordMessageEncoder implements Encoder<PasswordMessage> {
     public void write(PasswordMessage msg, ByteBuffer buffer) {
         buffer.put((byte) 'p');
         buffer.putInt(0);
-        buffer.put(msg.getPasswordHash() != null ? msg.getPasswordHash() : bytes(msg.getPassword()));
+        buffer.put(msg.passwordHash() != null ? msg.passwordHash() : bytes(msg.password()));
         buffer.put((byte) 0);
         buffer.putInt(1, buffer.position() - 1);
     }

@@ -15,11 +15,13 @@
 package com.github.pgasync.impl.message;
 
 import lombok.Value;
+import lombok.experimental.Accessors;
 
 /**
  * @author Antti Laisi
  */
 @Value
+@Accessors(fluent = true)
 public class ErrorResponse implements Message {
     public enum Level {
         ERROR, FATAL, PANIC, WARNING, NOTICE, DEBUG, INFO, LOG

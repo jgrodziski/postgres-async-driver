@@ -16,11 +16,13 @@ package com.github.pgasync.impl.message;
 
 import com.github.pgasync.impl.Oid;
 import lombok.Value;
+import lombok.experimental.Accessors;
 
 /**
  * @author Antti Laisi
  */
 @Value
+@Accessors(fluent = true)
 public class RowDescription implements Message {
     @Value
     public static class ColumnDescription {

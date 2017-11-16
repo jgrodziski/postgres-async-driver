@@ -30,7 +30,6 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-import static com.github.pgasync.impl.DatabaseRule.createPoolBuilder;
 import static java.lang.System.currentTimeMillis;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -54,11 +53,16 @@ public class PipelineTest {
     @After
     public void closeConnection() throws Exception {
         if (c != null) {
-            pool.release(c);
+            pool.release(c).await();
         }
         if (pool != null) {
-            pool.close();
+            pool.close().await();
         }
+    }
+
+    private Connection getConnection(boolean pipeline) throws InterruptedException {
+        pool = dbr.builder.pipeline(pipeline).build();
+        return c = pool.getConnection().toBlocking().value();
     }
 
     @Test
@@ -81,26 +85,6 @@ public class PipelineTest {
         assertThat(results.size(), is(count));
         assertThat(MILLISECONDS.toSeconds(writeTime), is(0L));
         assertThat(MILLISECONDS.toSeconds(readTime + 999) >= remoteWaitTimeSeconds, is(true));
-    }
-
-    private Connection getConnection(boolean pipeline) throws InterruptedException {
-        pool = dbr.builder.pipeline(pipeline).build();
-        SynchronousQueue<Connection> connQueue = new SynchronousQueue<>();
-        pool.getConnection().subscribe(connQueue::add);
-        return c = connQueue.take();
-    }
-
-    @Test @Ignore("TODO: Setup pipeline queue limits")
-    public void disabledConnectionPipeliningThrowsErrorWhenPipeliningIsAttempted() throws Exception {
-        Connection c = getConnection(false);
-
-        BlockingQueue<ResultSet> rs = new LinkedBlockingDeque<>();
-        BlockingQueue<Throwable> err = new LinkedBlockingDeque<>();
-        for (int i = 0; i < 2; ++i) {
-            c.query("select " + i + ", pg_sleep(0.5)", rs::add, err::add);
-        }
-        assertThat(err.take().getMessage(), containsString("Pipelining not enabled"));
-        assertThat(rs.take(), isA(ResultSet.class));
     }
 
     @Test
@@ -152,6 +136,19 @@ public class PipelineTest {
         assertThat(results.size(), is(count));
         assertThat(MILLISECONDS.toSeconds(writeTime.get()), is(0L));
         assertThat(MILLISECONDS.toSeconds(readTime + 999) >= remoteWaitTimeSeconds, is(true));
+    }
+
+    @Test @Ignore("TODO: Setup pipeline queue limits")
+    public void disabledConnectionPipeliningThrowsErrorWhenPipeliningIsAttempted() throws Exception {
+        Connection c = getConnection(false);
+
+        BlockingQueue<ResultSet> rs = new LinkedBlockingDeque<>();
+        BlockingQueue<Throwable> err = new LinkedBlockingDeque<>();
+        for (int i = 0; i < 2; ++i) {
+            c.query("select " + i + ", pg_sleep(0.5)", rs::add, err::add);
+        }
+        assertThat(err.take().getMessage(), containsString("Pipelining not enabled"));
+        assertThat(rs.take(), isA(ResultSet.class));
     }
 
 }

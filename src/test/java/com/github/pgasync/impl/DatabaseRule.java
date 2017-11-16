@@ -29,9 +29,8 @@ import ru.yandex.qatools.embed.postgresql.config.PostgresConfig;
  * @author Antti Laisi
  */
 class DatabaseRule extends ExternalResource {
-
+    private static PostgresProcess process;
     final ConnectionPoolBuilder builder;
-    static PostgresProcess process;
     ConnectionPool pool;
 
     DatabaseRule() {
@@ -77,7 +76,7 @@ class DatabaseRule extends ExternalResource {
     protected void after() {
         if(pool != null) {
             try {
-                pool.close();
+                pool.close().await();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -85,11 +84,11 @@ class DatabaseRule extends ExternalResource {
     }
 
     ResultSet query(String sql) {
-        return block(db().querySet(sql, (Object[]) null));
+        return block(db().querySet(sql, (Object[]) null).toObservable());
     }
     @SuppressWarnings("rawtypes")
     ResultSet query(String sql, List/*<Object>*/ params) {
-        return block(db().querySet(sql, params.toArray()));
+        return block(db().querySet(sql, params.toArray()).toObservable());
     }
 
     private <T> T block(Observable<T> observable) {
@@ -129,17 +128,12 @@ class DatabaseRule extends ExternalResource {
         }
     }
 
-    static ConnectionPool createPool(int size) {
-        return createPoolBuilder(size).build();
-    }
     static ConnectionPoolBuilder createPoolBuilder(int size) {
         String db = getenv("PG_DATABASE");
         String user = getenv("PG_USERNAME");
         String pass = getenv("PG_PASSWORD");
 
         ConnectionPoolBuilder connectionPoolBuilder = new EmbeddedConnectionPoolBuilder()
-                .validationQuery("SELECT 1")
-                .validationTimeout(1000)
                 .connectTimeout(1000)
                 .poolSize(size);
 
@@ -147,15 +141,15 @@ class DatabaseRule extends ExternalResource {
             return connectionPoolBuilder;
         else
             return connectionPoolBuilder
-                    .database(envOrDefault("PG_DATABASE", "postgres"))
-                    .username(envOrDefault("PG_USERNAME", "postgres"))
-                    .password(envOrDefault("PG_PASSWORD", "postgres"))
+                    .database(envOrDefault("PG_DATABASE"))
+                    .username(envOrDefault("PG_USERNAME"))
+                    .password(envOrDefault("PG_PASSWORD"))
                     .ssl(true);
     }
 
 
-    static String envOrDefault(String var, String def) {
+    private static String envOrDefault(String var) {
         String value = getenv(var);
-        return value != null ? value : def;
+        return value != null ? value : "postgres";
     }
 }

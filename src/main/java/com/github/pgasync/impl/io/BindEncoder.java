@@ -65,15 +65,15 @@ public class BindEncoder implements Encoder<Bind> {
         buffer.put((byte) 0); // portal
         buffer.put((byte) 0); // prepared statement
         buffer.putShort((short) 0); // number of format codes
-        buffer.putShort((short) msg.getParams().length); // number of parameters
-        for (byte[] param : msg.getParams()) {
+        buffer.putShort((short) msg.params().length); // number of parameters
+        for (byte[] param : msg.params()) {
             writeParameter(buffer, param);
         }
         buffer.putShort((short) 0);
         buffer.putInt(1, buffer.position() - 1);
     }
 
-    void writeParameter(ByteBuffer buffer, byte[] param) {
+    private void writeParameter(ByteBuffer buffer, byte[] param) {
         if (param == null) {
             buffer.putInt(-1);
             return;

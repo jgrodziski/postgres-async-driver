@@ -14,163 +14,93 @@
 
 package com.github.pgasync;
 
-import com.github.pgasync.impl.ConnectionValidator;
+import com.github.pgasync.ConnectionConfig.ConnectionConfigBuilder;
+import com.github.pgasync.impl.PgConnectionPool;
 import com.github.pgasync.impl.conversion.DataConverter;
-import com.github.pgasync.impl.netty.NettyPgConnectionPool;
-import rx.Observable;
-import rx.functions.Func1;
+import io.netty.channel.nio.NioEventLoopGroup;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
  * Builder for creating {@link ConnectionPool} instances.
- * 
+ *
  * @author Antti Laisi
  */
 public class ConnectionPoolBuilder {
+    private static final int DEFAULT_PORT = 5432;
+    private static final int DEFAULT_POOL_SIZE = 4;
 
-    final PoolProperties properties = new PoolProperties();
+    private final List<Converter<?>> converters = new ArrayList<>();
+    private ConnectionConfigBuilder configBuilder = ConnectionConfig.builder();
+    private String hostname;
+    private int poolSize = DEFAULT_POOL_SIZE;
+    private int port = DEFAULT_PORT;
 
     /**
      * @return Pool ready for use
      */
     public ConnectionPool build() {
-        return new NettyPgConnectionPool(properties);
+        ConnectionConfig config = configBuilder
+                .address(InetSocketAddress.createUnresolved(hostname, port))
+                .poolSize(poolSize)
+                .build();
+
+        DataConverter dataConverter = new DataConverter(converters);
+        NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup(1);
+
+        return new PgConnectionPool(config, dataConverter, eventLoopGroup);
     }
 
     public ConnectionPoolBuilder hostname(String hostname) {
-        properties.hostname = hostname;
+        this.hostname = hostname;
         return this;
     }
 
     public ConnectionPoolBuilder port(int port) {
-        properties.port = port;
+        this.port = port;
         return this;
     }
 
     public ConnectionPoolBuilder username(String username) {
-        properties.username = username;
+        configBuilder.username(username);
         return this;
     }
 
     public ConnectionPoolBuilder password(String password) {
-        properties.password = password;
+        configBuilder.password(password);
         return this;
     }
 
     public ConnectionPoolBuilder database(String database) {
-        properties.database = database;
+        configBuilder.database(database);
         return this;
     }
 
     public ConnectionPoolBuilder poolSize(int poolSize) {
-        properties.poolSize = poolSize;
+        this.poolSize = poolSize;
         return this;
     }
 
     public ConnectionPoolBuilder converters(Converter<?>... converters) {
-        Collections.addAll(properties.converters, converters);
-        return this;
-    }
-
-    public ConnectionPoolBuilder dataConverter(DataConverter dataConverter) {
-        properties.dataConverter = dataConverter;
+        Collections.addAll(this.converters, converters);
         return this;
     }
 
     public ConnectionPoolBuilder ssl(boolean ssl) {
-        properties.useSsl = ssl;
+        configBuilder.useSsl(ssl);
         return this;
     }
 
     public ConnectionPoolBuilder pipeline(boolean pipeline) {
-        properties.usePipelining = pipeline;
-        return this;
-    }
-
-    public ConnectionPoolBuilder validationQuery(String validationQuery) {
-        properties.validationProperties.query = validationQuery;
-        return this;
-    }
-
-    public ConnectionPoolBuilder validationTimeout(int timeout) {
-        properties.validationProperties.timeout = timeout;
+        configBuilder.pipeline(pipeline);
         return this;
     }
 
     public ConnectionPoolBuilder connectTimeout(int timeout) {
-        properties.connectTimeout = timeout;
+        configBuilder.connectTimeout(timeout);
         return this;
-    }
-
-    /**
-     * Configuration for a pool.
-     */
-    public static class PoolProperties {
-
-        String hostname = "localhost";
-        int port = 5432;
-        String username;
-        String password;
-        String database;
-        int poolSize = 20;
-        DataConverter dataConverter = null;
-        List<Converter<?>> converters = new ArrayList<>();
-        boolean useSsl;
-        boolean usePipelining;
-        int connectTimeout = 30000;
-        ValidationProperties validationProperties = new ValidationProperties();
-
-        public String getHostname() {
-            return hostname;
-        }
-        public int getPort() {
-            return port;
-        }
-        public String getUsername() {
-            return username;
-        }
-        public String getPassword() {
-            return password;
-        }
-        public String getDatabase() {
-            return database;
-        }
-        public int getPoolSize() {
-            return poolSize;
-        }
-        public boolean getUseSsl() {
-            return useSsl;
-        }
-        public boolean getUsePipelining() {
-            return usePipelining;
-        }
-        public DataConverter getDataConverter() {
-            return dataConverter != null ? dataConverter : new DataConverter(converters);
-        }
-        public Func1<Connection,Observable<Connection>> getValidator() {
-            return validationProperties.query == null || validationProperties.query.trim().isEmpty()
-                ? Observable::just
-                : new ConnectionValidator(validationProperties.query, validationProperties.timeout)::validate;
-        }
-
-        public int getConnectTimeout() {
-            return connectTimeout;
-        }
-    }
-
-    public static class ValidationProperties {
-        String query;
-        int timeout = 30000;
-
-        public String getQuery() {
-            return query;
-        }
-
-        public long getTimeout() {
-            return timeout;
-        }
     }
 }

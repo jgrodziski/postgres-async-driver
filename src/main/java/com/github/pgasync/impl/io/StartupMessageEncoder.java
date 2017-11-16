@@ -58,8 +58,8 @@ public class StartupMessageEncoder implements Encoder<StartupMessage> {
         buffer.putInt(msg.getProtocol());
 
         for (String s : new String[] {
-                "user", msg.getUsername(),
-                "database", msg.getDatabase(),
+                "user", msg.username(),
+                "database", msg.database(),
                 "client_encoding", "UTF8" }) {
             putCString(buffer, s);
         }

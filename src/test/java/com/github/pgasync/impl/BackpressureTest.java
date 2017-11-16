@@ -1,5 +1,6 @@
 package com.github.pgasync.impl;
 
+import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
 import rx.Observable;
@@ -20,16 +21,21 @@ public class BackpressureTest {
     @ClassRule
     public static DatabaseRule dbr = new DatabaseRule(createPoolBuilder(1));
 
+    @Before
+    public void setup() {
+        dbr.query("DROP TABLE IF EXISTS BACKPRESSURE_TEST");
+        dbr.query("CREATE TABLE BACKPRESSURE_TEST(ID INT)");
+    }
+
     @Test
     public void shouldRespectBackpressureOnSlowConsumer() {
         //given
         List<Integer> numbers = range(0, 1000).boxed().collect(Collectors.toList());
 
-        dbr.query("CREATE TABLE BACKPRESSURE_TEST(ID INT)");
         Observable.merge(
                 shuffle(numbers)
                         .stream()
-                        .map(__ -> dbr.db().querySet("INSERT INTO BACKPRESSURE_TEST VALUES($1)", __))
+                        .map(__ -> dbr.db().querySet("INSERT INTO BACKPRESSURE_TEST VALUES($1)", __).toObservable())
                         .collect(Collectors.toList())
         ).toCompletable().await(10, TimeUnit.SECONDS);
 

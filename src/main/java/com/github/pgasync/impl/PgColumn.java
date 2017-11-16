@@ -14,18 +14,17 @@
 
 package com.github.pgasync.impl;
 
+import lombok.Value;
+import lombok.experimental.Accessors;
+
 /**
  * Column index/type pair.
- * 
+ *
  * @author Antti Laisi
  */
-class PgColumn {
-
-    final int index;
-    final Oid type;
-
-    public PgColumn(int index, Oid type) {
-        this.index = index;
-        this.type = type;
-    }
+@Value(staticConstructor = "create")
+@Accessors(fluent = true)
+public class PgColumn {
+    int index;
+    Oid type;
 }

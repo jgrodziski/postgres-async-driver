@@ -14,15 +14,17 @@
 
 package com.github.pgasync;
 
-import rx.Observable;
+import rx.Completable;
+import rx.Single;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
  * A unit of work. Transactions must be committed or rolled back, otherwise a
  * connection left is a stale state. A rollback is automatically performed after
  * backend error.
- * 
+ *
  * @author Antti Laisi
  */
 public interface Transaction extends QueryExecutor {
@@ -30,31 +32,33 @@ public interface Transaction extends QueryExecutor {
     /**
      * Commits a transaction
      */
-    Observable<Void> commit();
+    Completable commit();
 
     /**
      * Rollbacks a transaction.
      */
-    Observable<Void> rollback();
+    Completable rollback();
+
+    @Override
+    Transaction withTimeout(long timeout, TimeUnit timeUnit);
 
     /**
      * Commits a transaction.
      *
      * @param onCompleted Called when commit completes
-     * @param onError Called on exception thrown
+     * @param onError     Called on exception thrown
      */
     default void commit(Runnable onCompleted, Consumer<Throwable> onError) {
-        commit().subscribe(__ -> onCompleted.run(), onError::accept);
+        commit().subscribe(onCompleted::run, onError::accept);
     }
 
     /**
      * Rollbacks a transaction.
      *
      * @param onCompleted Called when rollback completes
-     * @param onError Called on exception thrown
+     * @param onError     Called on exception thrown
      */
     default void rollback(Runnable onCompleted, Consumer<Throwable> onError) {
-        rollback().subscribe(__ -> onCompleted.run(), onError::accept);
+        rollback().subscribe(onCompleted::run, onError::accept);
     }
-
 }

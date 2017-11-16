@@ -16,11 +16,14 @@ public class AuthenticationTest {
 
     @Test
     public void shouldThrowExceptionOnInvalidCredentials() throws Exception {
-        try (ConnectionPool pool = dbr.builder.password("_invalid_").build()) {
+        ConnectionPool pool = dbr.builder.password("_invalid_").build();
+        try {
             pool.queryRows("SELECT 1").toBlocking().first();
             fail();
         } catch (SqlException sqle) {
             assertEquals("28P01", sqle.getCode());
+        } finally {
+            pool.close().await();
         }
     }
 

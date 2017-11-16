@@ -23,7 +23,7 @@ public interface Converter<T> {
     byte[] from(T o);
 
     /**
-     * @param oid Value oid
+     * @param oid   Value oid
      * @param value Value in backend format, never null
      * @return Converted object, never null
      */

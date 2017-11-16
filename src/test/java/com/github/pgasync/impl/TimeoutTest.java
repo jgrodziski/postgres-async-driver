@@ -4,8 +4,8 @@ import com.github.pgasync.*;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
+import rx.Completable;
 import rx.Observable;
-import rx.observables.BlockingObservable;
 import rx.observers.TestSubscriber;
 
 import java.io.IOException;
@@ -36,7 +36,7 @@ public class TimeoutTest {
     }
 
     @Test
-    public void shouldReportErrorOnReadTimeout() throws Exception {
+    public void shouldReportErrorOnReadRxTimeout() throws Exception {
         //given
         Db db = dbr.db();
 
@@ -53,7 +53,8 @@ public class TimeoutTest {
     public void shouldReportErrorWhenAttemptToNotExistingEndpoint() throws Exception {
         //given:
         int port = randomPort();
-        ConnectionPool db = new ConnectionPoolBuilder().hostname("localhost")
+        ConnectionPool db = new ConnectionPoolBuilder()
+                .hostname("localhost")
                 .port(port)
                 .connectTimeout(1000)
                 .build();
@@ -111,7 +112,29 @@ public class TimeoutTest {
     }
 
     @Test
-    public void shouldReconnectAfterTransactionTimeout() throws Exception {
+    public void shouldTimeoutLongRunningQuery() throws Exception {
+        //given
+        Db db = dbr.db();
+
+        //when
+        Observable
+                .range(0, 5)
+                .map(i -> (i + 1) % 4)
+                .flatMap(i -> db.withTimeout(1800, TimeUnit.MILLISECONDS)
+                                .queryRows("SELECT pg_sleep(" + i + ")")
+                                .map(x -> "ok")
+                                .onErrorReturn(e -> "error")
+                        , 1)
+                .subscribe(testSubscriber);
+
+        testSubscriber.awaitTerminalEvent();
+
+        //then
+        testSubscriber.assertValues("ok", "error", "error", "ok", "ok");
+    }
+
+    @Test
+    public void shouldReconnectAfterTransactionRxTimeout() throws Exception {
         // given
         Db pool1 = dbr.builder.poolSize(1).build();
         Db pool2 = dbr.builder.poolSize(1).build();
@@ -120,16 +143,15 @@ public class TimeoutTest {
         dbr.query("CREATE TABLE tx_timeout_test(ID INT PRIMARY KEY)");
 
 
-        Function<Integer, BlockingObservable<Void>> insertRecord = n -> pool2
+        Function<Integer, Completable> insertRecord = n -> pool2
                 .begin()
-                .flatMap(t ->
+                .flatMapCompletable(t ->
                         t.querySet("INSERT INTO tx_timeout_test values ($1)", n)
                                 .map(__ -> t)
-                                .flatMap(Transaction::commit)
-                                .onErrorResumeNext(e -> t.rollback().flatMap(__ -> Observable.error(e)))
+                                .flatMapCompletable(Transaction::commit)
+                                .onErrorResumeNext(e -> t.rollback().andThen(Completable.error(e)))
                                 .timeout(1, TimeUnit.SECONDS)
-                )
-                .toBlocking();
+                );
 
         //when
 
@@ -138,25 +160,73 @@ public class TimeoutTest {
                 .begin()
                 .flatMap(_tx -> _tx.querySet("LOCK TABLE tx_timeout_test IN ACCESS EXCLUSIVE MODE").map(__ -> _tx))
                 .toBlocking()
-                .last();
+                .value();
 
         // try to use that table in other tx
         try {
-            insertRecord.apply(321).subscribe();
+            insertRecord.apply(321).await();
         } catch (Throwable t) {
             // ensure timeout is the cause
             assertThat(t.getCause(), is(instanceOf(TimeoutException.class)));
         } finally {
             // release lock
-            tx.rollback().toBlocking().subscribe();
+            tx.rollback().await();
         }
 
         // try to insert once again
-        insertRecord.apply(123).subscribe();
+        insertRecord.apply(123).await();
 
         //then
         List<Integer> records = pool2.queryRows("SELECT * FROM tx_timeout_test").map(r -> r.getInt(0)).toList().toBlocking().last();
-        assertEquals(records, Collections.singletonList(123));
+        assertEquals(Collections.singletonList(123), records);
+    }
+
+    @Test
+    public void shouldReconnectAfterTransactionPgTimeout() throws Exception {
+        // given
+        Db pool1 = dbr.builder.poolSize(1).build();
+        Db pool2 = dbr.builder.poolSize(1).build();
+
+        dbr.query("DROP TABLE IF EXISTS tx_timeout_test");
+        dbr.query("CREATE TABLE tx_timeout_test(ID INT PRIMARY KEY)");
+
+
+        Function<Integer, Completable> insertRecord = n -> pool2
+                .withTimeout(1, TimeUnit.SECONDS)
+                .begin()
+                .flatMapCompletable(t ->
+                        t.querySet("INSERT INTO tx_timeout_test values ($1)", n)
+                                .map(__ -> t)
+                                .flatMapCompletable(Transaction::commit)
+                );
+
+        //when
+
+        // lock table
+        Transaction tx = pool1
+                .begin()
+                .flatMap(_tx -> _tx.querySet("LOCK TABLE tx_timeout_test IN ACCESS EXCLUSIVE MODE").map(__ -> _tx))
+                .toBlocking()
+                .value();
+
+        // try to use that table in other tx
+        try {
+            insertRecord.apply(321).await();
+        } catch (Throwable t) {
+            assertThat(t, is(instanceOf(SqlException.class)));
+            // ensure timeout is the cause
+            assertEquals("ERROR: SQLSTATE=57014, MESSAGE=canceling statement due to statement timeout", t.getMessage());
+        } finally {
+            // release lock
+            tx.rollback().await();
+        }
+
+        // try to insert once again
+        insertRecord.apply(123).await();
+
+        //then
+        List<Integer> records = pool2.queryRows("SELECT * FROM tx_timeout_test").map(r -> r.getInt(0)).toList().toBlocking().last();
+        assertEquals(Collections.singletonList(123), records);
     }
 
     private Socket createDummySocket(int port) throws IOException {

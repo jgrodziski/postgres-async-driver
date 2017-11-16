@@ -15,11 +15,13 @@
 package com.github.pgasync.impl.message;
 
 import lombok.Value;
+import lombok.experimental.Accessors;
 
 /**
  * @author Antti Laisi
  */
 @Value
+@Accessors(fluent = true)
 public class Bind implements Message {
     byte[][] params;
 }

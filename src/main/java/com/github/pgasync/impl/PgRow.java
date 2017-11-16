@@ -18,6 +18,8 @@ import com.github.pgasync.Row;
 import com.github.pgasync.SqlException;
 import com.github.pgasync.impl.conversion.DataConverter;
 import com.github.pgasync.impl.message.DataRow;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -26,221 +28,211 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Collection;
 import java.util.Map;
+import java.util.function.BiFunction;
 
 /**
  * Result row, uses {@link DataConverter} for all conversions.
- * 
+ *
  * @author Antti Laisi
  */
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class PgRow implements Row {
-
-    final DataRow data;
-    final DataConverter dataConverter;
-    final Map<String,PgColumn> columns;
-    final PgColumn[] pgColumns;
-
-    public PgRow(DataRow data, Map<String,PgColumn> columns, DataConverter dataConverter) {
-        this.data = data;
-        this.dataConverter = dataConverter;
-        this.columns = columns;
-        Collection<PgColumn> values = columns.values();
-        this.pgColumns = values.toArray(new PgColumn[values.size()]);
-    }
+    DataRow data;
+    DataConverter dataConverter;
+    Map<String, PgColumn> columns;
+    PgColumn[] pgColumns;
 
     @Override
     public String getString(int index) {
-        return dataConverter.toString(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toString);
     }
 
     @Override
     public String getString(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toString(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toString);
     }
 
     @Override
     public Character getChar(int index) {
-        return dataConverter.toChar(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toChar);
     }
 
     @Override
     public Character getChar(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toChar(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toChar);
     }
 
     @Override
     public Byte getByte(int index) {
-        return dataConverter.toByte(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toByte);
     }
 
     @Override
     public Byte getByte(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toByte(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toByte);
     }
 
     @Override
     public Short getShort(int index) {
-        return dataConverter.toShort(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toShort);
     }
 
     @Override
     public Short getShort(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toShort(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toShort);
     }
 
     @Override
     public Integer getInt(int index) {
-        return dataConverter.toInteger(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toInteger);
     }
 
     @Override
     public Integer getInt(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toInteger(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toInteger);
     }
 
     @Override
     public Long getLong(int index) {
-        return dataConverter.toLong(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toLong);
     }
 
     @Override
     public Long getLong(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toLong(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toLong);
     }
 
     @Override
     public BigInteger getBigInteger(int index) {
-        return dataConverter.toBigInteger(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toBigInteger);
     }
 
     @Override
     public BigInteger getBigInteger(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toBigInteger(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toBigInteger);
     }
 
     @Override
     public BigDecimal getBigDecimal(int index) {
-        return dataConverter.toBigDecimal(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toBigDecimal);
     }
 
     @Override
     public BigDecimal getBigDecimal(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toBigDecimal(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toBigDecimal);
     }
 
     @Override
     public Double getDouble(int index) {
-        return dataConverter.toDouble(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toDouble);
     }
 
     @Override
     public Double getDouble(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toDouble(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toDouble);
     }
 
     @Override
     public Date getDate(int index) {
-        return dataConverter.toDate(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toDate);
     }
 
     @Override
     public Date getDate(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toDate(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toDate);
     }
 
     @Override
     public Time getTime(int index) {
-        return dataConverter.toTime(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toTime);
     }
 
     @Override
     public Time getTime(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toTime(pgColumn.type, data.getValue(pgColumn.index));
-    }
-
-    @Override
-    public Timestamp getTimestamp(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toTimestamp(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toTime);
     }
 
     @Override
     public Timestamp getTimestamp(int index) {
-        return dataConverter.toTimestamp(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toTimestamp);
+    }
+
+    @Override
+    public Timestamp getTimestamp(String column) {
+        return readValue(column, dataConverter::toTimestamp);
     }
 
     @Override
     public byte[] getBytes(int index) {
-        return dataConverter.toBytes(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toBytes);
     }
 
     @Override
     public byte[] getBytes(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toBytes(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toBytes);
     }
 
     @Override
     public Boolean getBoolean(int index) {
-        return dataConverter.toBoolean(pgColumns[index].type, data.getValue(index));
+        return readValue(index, dataConverter::toBoolean);
     }
 
     @Override
     public Boolean getBoolean(String column) {
-        PgColumn pgColumn = getColumn(column);
-        return dataConverter.toBoolean(pgColumn.type, data.getValue(pgColumn.index));
+        return readValue(column, dataConverter::toBoolean);
     }
 
     @Override
     public <TArray> TArray getArray(String column, Class<TArray> arrayType) {
         PgColumn pgColumn = getColumn(column);
-        return dataConverter.toArray(arrayType, pgColumn.type, data.getValue(pgColumn.index));
+        return dataConverter.toArray(arrayType, pgColumn.type(), data.getValue(pgColumn.index()));
     }
 
     @Override
     public <TArray> TArray getArray(int index, Class<TArray> arrayType) {
-        return dataConverter.toArray(arrayType, pgColumns[index].type, data.getValue(index));
+        return dataConverter.toArray(arrayType, pgColumns[index].type(), data.getValue(index));
     }
 
     @Override
     public <T> T get(int index, Class<T> type) {
-        return dataConverter.toObject(type, pgColumns[index].type, data.getValue(index));
+        return dataConverter.toObject(type, pgColumns[index].type(), data.getValue(index));
     }
 
     @Override
     public <T> T get(String column, Class<T> type) {
         PgColumn pgColumn = getColumn(column);
-        return dataConverter.toObject(type, pgColumn.type, data.getValue(pgColumn.index));
+        return dataConverter.toObject(type, pgColumn.type(), data.getValue(pgColumn.index()));
     }
 
     public Object get(String column) {
+        return readValue(column, dataConverter::toObject);
+    }
+
+    private <T> T readValue(String column, BiFunction<Oid, byte[], T> converter) {
         PgColumn pgColumn = getColumn(column);
-        return dataConverter.toObject(pgColumn.type, data.getValue(pgColumn.index));
+        return converter.apply(pgColumn.type(), data.getValue(pgColumn.index()));
     }
 
-    public Map<String, PgColumn> getColumns() {
-        return columns;
+    private <T> T readValue(int index, BiFunction<Oid, byte[], T> converter) {
+        if (index > pgColumns.length)
+            throw new IndexOutOfBoundsException("No such column: " + index);
+
+        return converter.apply(pgColumns[index].type(), data.getValue(index));
     }
 
-    PgColumn getColumn(String name) {
-        if (name == null) {
+    private PgColumn getColumn(String name) {
+        if (name == null)
             throw new IllegalArgumentException("Column name is required");
-        }
+
         PgColumn column = columns.get(name.toUpperCase());
-        if (column == null) {
+        if (column == null)
             throw new SqlException("Unknown column '" + name + "'");
-        }
+        
         return column;
     }
 
+    public static PgRow create(DataRow data, Map<String, PgColumn> columns, DataConverter dataConverter) {
+        Collection<PgColumn> values = columns.values();
+        return new PgRow(data, dataConverter, columns, values.toArray(new PgColumn[values.size()]));
+    }
 }

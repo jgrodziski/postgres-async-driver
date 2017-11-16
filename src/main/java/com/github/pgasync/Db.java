@@ -1,16 +1,15 @@
 package com.github.pgasync;
 
+import rx.Completable;
+
 /**
  * Main interface to PostgreSQL backend.
  *
  * @author Antti Laisi
  */
-public interface Db extends QueryExecutor, Listenable, AutoCloseable {
-
+public interface Db extends QueryExecutor, Listenable {
     /**
      * Closes the pool, blocks the calling thread until connections are closed.
      */
-    @Override
-    void close() throws Exception;
-
+    Completable close();
 }

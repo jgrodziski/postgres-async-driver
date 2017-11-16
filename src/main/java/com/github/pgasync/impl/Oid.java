@@ -16,7 +16,7 @@ package com.github.pgasync.impl;
 
 /**
  * Object identifiers, copied from org.postgresql.core.Oid.
- * 
+ *
  * @author Antti Laisi
  */
 public enum Oid {
@@ -78,8 +78,7 @@ public enum Oid {
     // Added
     JSON(114),
     JSONB(3802),
-    HSTORE(33670)
-    ;
+    HSTORE(33670);
 
     final int id;
 

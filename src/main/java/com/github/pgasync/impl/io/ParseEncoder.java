@@ -54,7 +54,7 @@ public class ParseEncoder implements Encoder<Parse> {
         buffer.put((byte) 'P');
         buffer.putInt(0);
         buffer.put((byte) 0); // unnamed prepared statement
-        putCString(buffer, msg.getQuery());
+        putCString(buffer, msg.query());
         buffer.putShort((short) 0); // no parameter types
         buffer.putInt(1, buffer.position() - 1);
     }

@@ -69,14 +69,14 @@ public class PerformanceTest {
         this.poolSize = poolSize;
         this.numThreads = numThreads;
         this.pipeline = pipeline;
-        dbPool = DatabaseRule.createPoolBuilder(poolSize).pipeline(pipeline).validationQuery(null).build();
+        dbPool = DatabaseRule.createPoolBuilder(poolSize).pipeline(pipeline).build();
         threadPool = Executors.newFixedThreadPool(numThreads);
     }
 
     @After
     public void close() throws Exception {
         threadPool.shutdownNow();
-        dbPool.close();
+        dbPool.close().await();
     }
 
     @Test(timeout = 1000)
@@ -89,7 +89,7 @@ public class PerformanceTest {
         while (connections.size() < poolSize) {
             MILLISECONDS.sleep(5);
         }
-        connections.forEach(dbPool::release);
+        connections.forEach(c -> dbPool.release(c).await());
     }
 
     @Test

@@ -16,47 +16,51 @@ package com.github.pgasync.impl;
 
 import com.github.pgasync.ResultSet;
 import com.github.pgasync.Row;
+import lombok.AllArgsConstructor;
 
 import java.util.*;
 
 /**
  * {@link ResultSet} constructed from Query/Execute response messages.
- * 
+ *
  * @author Antti Laisi
  */
+@AllArgsConstructor(staticName = "create")
 public class PgResultSet implements ResultSet {
-
-    final List<Row> rows;
-    final Map<String, PgColumn> columns;
-    final int updatedRows;
-
-    public PgResultSet(Map<String, PgColumn> columns, List<Row> rows, int updatedRows) {
-        this.columns = columns;
-        this.rows = rows;
-        this.updatedRows = updatedRows;
-    }
+    private final List<Row> rows;
+    private final Map<String, PgColumn> columns;
+    private final int updatedRows;
 
     @Override
     public Collection<String> getColumns() {
-        return columns != null ? columns.keySet() : Collections.emptyList();
+        return Optional
+                .ofNullable(columns)
+                .map(Map::keySet)
+                .orElseGet(Collections::emptySet);
     }
 
     @Override
     public Iterator<Row> iterator() {
-        return rows != null ? rows.iterator() : Collections.<Row> emptyIterator();
+        return Optional
+                .ofNullable(rows)
+                .map(List::iterator)
+                .orElseGet(Collections::emptyIterator);
     }
 
     @Override
     public Row row(int index) {
-        if (rows == null) {
-            throw new IndexOutOfBoundsException();
-        }
-        return rows.get(index);
+        return Optional
+                .ofNullable(rows)
+                .map(r -> r.get(index))
+                .orElseThrow(IndexOutOfBoundsException::new);
     }
 
     @Override
     public int size() {
-        return rows != null ? rows.size() : 0;
+        return Optional
+                .ofNullable(rows)
+                .map(List::size)
+                .orElse(0);
     }
 
     @Override

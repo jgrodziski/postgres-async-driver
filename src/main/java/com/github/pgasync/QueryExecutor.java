@@ -1,8 +1,11 @@
 package com.github.pgasync;
 
 import rx.Observable;
+import rx.Single;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -11,18 +14,19 @@ import java.util.function.Consumer;
  * @author Antti Laisi
  */
 public interface QueryExecutor {
-
     /**
      * Begins a transaction.
+     *
+     * @return Cold single that returns started transaction.
      */
-    Observable<Transaction> begin();
+    Single<Transaction> begin();
 
     /**
      * Executes an anonymous prepared statement. Uses native PostgreSQL syntax with $arg instead of ?
      * to mark parameters. Supported parameter types are String, Character, Number, Time, Date, Timestamp
      * and byte[].
      *
-     * @param sql SQL to execute
+     * @param sql    SQL to execute
      * @param params Parameter values
      * @return Cold observable that emits 0-n rows.
      */
@@ -33,17 +37,25 @@ public interface QueryExecutor {
      * to mark parameters. Supported parameter types are String, Character, Number, Time, Date, Timestamp
      * and byte[].
      *
-     * @param sql SQL to execute
+     * @param sql    SQL to execute
      * @param params Parameter values
      * @return Cold observable that emits a single result set.
      */
-    Observable<ResultSet> querySet(String sql, Object... params);
+    Single<ResultSet> querySet(String sql, Object... params);
+
+    /**
+     * Sets statement timeout on a connection and returns is.
+     * @param timeout  timeout value
+     * @param timeUnit time unit
+     * @return Cold single that returns connection with timeout set
+     */
+    QueryExecutor withTimeout(long timeout, TimeUnit timeUnit);
 
     /**
      * Begins a transaction.
      *
      * @param onTransaction Called when transaction is successfully started.
-     * @param onError Called on exception thrown
+     * @param onError       Called on exception thrown
      */
     default void begin(Consumer<Transaction> onTransaction, Consumer<Throwable> onError) {
         begin().subscribe(onTransaction::accept, onError::accept);
@@ -52,12 +64,12 @@ public interface QueryExecutor {
     /**
      * Executes a simple query.
      *
-     * @param sql SQL to execute.
+     * @param sql      SQL to execute.
      * @param onResult Called when query is completed
-     * @param onError Called on exception thrown
+     * @param onError  Called on exception thrown
      */
     default void query(String sql, Consumer<ResultSet> onResult, Consumer<Throwable> onError) {
-        query(sql, null, onResult, onError);
+        query(sql, Collections.emptyList(), onResult, onError);
     }
 
     /**
@@ -65,12 +77,12 @@ public interface QueryExecutor {
      * to mark parameters. Supported parameter types are String, Character, Number, Time, Date, Timestamp
      * and byte[].
      *
-     * @param sql SQL to execute
-     * @param params List of parameters
+     * @param sql      SQL to execute
+     * @param params   List of parameters
      * @param onResult Called when query is completed
-     * @param onError Called on exception thrown
+     * @param onError  Called on exception thrown
      */
     default void query(String sql, List/*<Object>*/ params, Consumer<ResultSet> onResult, Consumer<Throwable> onError) {
-        querySet(sql, params != null ? params.toArray() : null).subscribe(onResult::accept, onError::accept);
+        querySet(sql, params.toArray()).subscribe(onResult::accept, onError::accept);
     }
 }

@@ -15,6 +15,7 @@
 package com.github.pgasync.impl.message;
 
 import lombok.Value;
+import lombok.experimental.Accessors;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -26,6 +27,7 @@ import static javax.xml.bind.DatatypeConverter.printHexBinary;
  * @author Antti Laisi
  */
 @Value
+@Accessors(fluent = true)
 public class PasswordMessage implements Message {
     String password;
     byte[] passwordHash;
@@ -53,7 +55,7 @@ public class PasswordMessage implements Message {
         return prefixed;
     }
 
-    static MessageDigest md5() {
+    private static MessageDigest md5() {
         try {
             return MessageDigest.getInstance("MD5");
         } catch (NoSuchAlgorithmException e) {

@@ -27,9 +27,9 @@ public class ListenNotifyTest {
         Subscription subscription = pool.listen("example").subscribe(result::add, Throwable::printStackTrace);
         TimeUnit.SECONDS.sleep(2);
 
-        pool.querySet("notify example, 'msg'").toBlocking().single();
-        pool.querySet("notify example, 'msg'").toBlocking().single();
-        pool.querySet("notify example, 'msg'").toBlocking().single();
+        pool.querySet("notify example, 'msg'").toBlocking().value();
+        pool.querySet("notify example, 'msg'").toBlocking().value();
+        pool.querySet("notify example, 'msg'").toBlocking().value();
 
         assertEquals("msg", result.poll(2, TimeUnit.SECONDS));
         assertEquals("msg", result.poll(2, TimeUnit.SECONDS));
@@ -38,7 +38,7 @@ public class ListenNotifyTest {
         subscription.unsubscribe();
         assertTrue(subscription.isUnsubscribed());
 
-        pool.querySet("notify example, 'msg'").toBlocking().single();
+        pool.querySet("notify example, 'msg'").toBlocking().value();
         assertNull(result.poll(2, TimeUnit.SECONDS));
     }
 }
