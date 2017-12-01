@@ -9,7 +9,7 @@ import java.net.InetSocketAddress;
 @Value
 @Accessors(fluent = true)
 @Builder
-public class ConnectionConfig {
+public class DatabaseConfig {
     InetSocketAddress address;
     String username;
     String password;
@@ -17,5 +17,6 @@ public class ConnectionConfig {
     boolean pipeline;
     int poolSize;
     int connectTimeout;
+    int statementTimeout;
     boolean useSsl;
 }

@@ -14,7 +14,7 @@
 
 package com.github.pgasync;
 
-import com.github.pgasync.ConnectionConfig.ConnectionConfigBuilder;
+import com.github.pgasync.DatabaseConfig.DatabaseConfigBuilder;
 import com.github.pgasync.impl.PgConnectionPool;
 import com.github.pgasync.impl.conversion.DataConverter;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -23,6 +23,7 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Builder for creating {@link ConnectionPool} instances.
@@ -32,20 +33,24 @@ import java.util.List;
 public class ConnectionPoolBuilder {
     private static final int DEFAULT_PORT = 5432;
     private static final int DEFAULT_POOL_SIZE = 4;
+    private static final long DEFAULT_CONNECT_TIMEOUT = 30000;
 
     private final List<Converter<?>> converters = new ArrayList<>();
-    private ConnectionConfigBuilder configBuilder = ConnectionConfig.builder();
+    private DatabaseConfigBuilder configBuilder = DatabaseConfig.builder();
     private String hostname;
-    private int poolSize = DEFAULT_POOL_SIZE;
     private int port = DEFAULT_PORT;
+
+    public ConnectionPoolBuilder() {
+        poolSize(DEFAULT_POOL_SIZE);
+        connectTimeout(DEFAULT_CONNECT_TIMEOUT, TimeUnit.MILLISECONDS);
+    }
 
     /**
      * @return Pool ready for use
      */
     public ConnectionPool build() {
-        ConnectionConfig config = configBuilder
+        DatabaseConfig config = configBuilder
                 .address(InetSocketAddress.createUnresolved(hostname, port))
-                .poolSize(poolSize)
                 .build();
 
         DataConverter dataConverter = new DataConverter(converters);
@@ -80,7 +85,7 @@ public class ConnectionPoolBuilder {
     }
 
     public ConnectionPoolBuilder poolSize(int poolSize) {
-        this.poolSize = poolSize;
+        configBuilder.poolSize(poolSize);
         return this;
     }
 
@@ -99,8 +104,13 @@ public class ConnectionPoolBuilder {
         return this;
     }
 
-    public ConnectionPoolBuilder connectTimeout(int timeout) {
-        configBuilder.connectTimeout(timeout);
+    public ConnectionPoolBuilder connectTimeout(long value, TimeUnit timeUnit) {
+        configBuilder.connectTimeout((int) timeUnit.toMillis(value));
+        return this;
+    }
+
+    public ConnectionPoolBuilder statementTimeout(long value, TimeUnit timeUnit) {
+        configBuilder.statementTimeout((int) timeUnit.toMillis(value));
         return this;
     }
 }

@@ -48,9 +48,9 @@ public class PgConnectionPool implements ConnectionPool {
     private final Queue<SingleSubscriber<Connection>> subscribers = new LinkedList<>();
     private final Set<Connection> connections = new HashSet<>();
     private final Queue<Connection> availableConnections = new LinkedList<>();
-    private final ConnectionPool delegate = new ConnectionPoolWithTimeout(0);
+    private final ConnectionPool delegate;
 
-    private final ConnectionConfig config;
+    private final DatabaseConfig config;
     private final DataConverter dataConverter;
     private final EventLoopGroup eventLoopGroup;
     private final NettyScheduler scheduler;
@@ -58,10 +58,11 @@ public class PgConnectionPool implements ConnectionPool {
     private int currentSize;
     private volatile boolean closed;
 
-    public PgConnectionPool(ConnectionConfig config, DataConverter dataConverter, EventLoopGroup eventLoopGroup) {
+    public PgConnectionPool(DatabaseConfig config, DataConverter dataConverter, EventLoopGroup eventLoopGroup) {
         this.config = config;
         this.dataConverter = dataConverter;
         this.eventLoopGroup = eventLoopGroup;
+        this.delegate = new ConnectionPoolWithTimeout(config.statementTimeout());
         this.scheduler = NettyScheduler.forEventExecutor(eventLoopGroup.next());
     }
 

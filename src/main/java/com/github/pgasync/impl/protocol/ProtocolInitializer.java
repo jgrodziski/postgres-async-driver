@@ -1,6 +1,6 @@
 package com.github.pgasync.impl.protocol;
 
-import com.github.pgasync.ConnectionConfig;
+import com.github.pgasync.DatabaseConfig;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
@@ -10,7 +10,7 @@ import lombok.AllArgsConstructor;
 
 @AllArgsConstructor
 class ProtocolInitializer extends ChannelInitializer<Channel> {
-    private final ConnectionConfig config;
+    private final DatabaseConfig config;
     private final ChannelHandler onActive;
     private final ChannelHandler protocolHandler;
 

@@ -14,27 +14,28 @@
 
 package com.github.pgasync.impl;
 
+import com.github.pgasync.ConnectionPool;
 import com.github.pgasync.ResultSet;
+import com.github.pgasync.SqlException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import rx.Single;
 
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
 import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
-import static org.junit.Assert.assertEquals;
+import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.*;
 
 /**
  * Tests for connection pool concurrency.
- * 
+ *
  * @author Antti Laisi
  */
 public class ConnectionPoolingTest {
@@ -59,12 +60,44 @@ public class ConnectionPoolingTest {
         List<Callable<ResultSet>> tasks = IntStream.range(0, count).mapToObj(insert).collect(toList());
 
         ExecutorService executor = Executors.newFixedThreadPool(20);
-        executor.invokeAll(tasks).stream().map(this::await);
+        executor.invokeAll(tasks).forEach(this::await);
 
         assertEquals(count, dbr.query("SELECT COUNT(*) FROM CP_TEST").row(0).getLong(0).longValue());
     }
 
-    <T> T await(Future<T> future) {
+    @Test
+    public void shouldResetTimeoutToDefaultValueWhenConnectionIsReturnedToPool() throws Exception {
+        ConnectionPool pool = dbr.builder.statementTimeout(5, TimeUnit.SECONDS).poolSize(1).build();
+
+        long timeSpent = testTimeout(
+                pool.withTimeout(1, TimeUnit.SECONDS).querySet("SELECT pg_sleep(10)")
+        );
+
+        assertThat(timeSpent, is(both(greaterThanOrEqualTo(1000L)).and(lessThan(2000L))));
+
+        timeSpent = testTimeout(
+                pool.querySet("SELECT pg_sleep(10)")
+        );
+
+        assertThat(timeSpent, is(both(greaterThanOrEqualTo(5000L)).and(lessThan(6000L))));
+    }
+
+    private long testTimeout(Single<ResultSet> query) {
+        long time = System.currentTimeMillis();
+        try {
+            query.toCompletable().await();
+            fail("TimeoutException expected but no exception thrown");
+        } catch (RuntimeException e) {
+            assertEquals(SqlException.class, e.getClass());
+            assertThat(e.getMessage(), containsString("canceling statement due to statement timeout"));
+        } finally {
+            time = System.currentTimeMillis() - time;
+        }
+
+        return time;
+    }
+
+    private <T> T await(Future<T> future) {
         try {
             return future.get();
         } catch (Exception e) {

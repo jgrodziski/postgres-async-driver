@@ -14,7 +14,7 @@
 
 package com.github.pgasync.impl.protocol;
 
-import com.github.pgasync.ConnectionConfig;
+import com.github.pgasync.DatabaseConfig;
 import com.github.pgasync.SqlException;
 import com.github.pgasync.impl.NettyScheduler;
 import com.github.pgasync.impl.message.*;
@@ -130,7 +130,7 @@ public class ProtocolStream {
     }
 
     private final EventLoopGroup group;
-    private final ConnectionConfig config;
+    private final DatabaseConfig config;
 
     private final GenericFutureListener<Future<? super Object>> onError;
     private final Queue<PgConsumer> subscribers = new LinkedBlockingDeque<>(); // TODO: limit pipeline queue depth
@@ -140,7 +140,7 @@ public class ProtocolStream {
     private boolean closed;
     private Scheduler scheduler;
 
-    public ProtocolStream(EventLoopGroup group, ConnectionConfig config) {
+    public ProtocolStream(EventLoopGroup group, DatabaseConfig config) {
         this.group = group;
         this.config = config;
         this.onError = future -> {

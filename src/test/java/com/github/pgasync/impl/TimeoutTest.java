@@ -56,7 +56,7 @@ public class TimeoutTest {
         ConnectionPool db = new ConnectionPoolBuilder()
                 .hostname("localhost")
                 .port(port)
-                .connectTimeout(1000)
+                .connectTimeout(1, TimeUnit.SECONDS)
                 .build();
 
         //when
@@ -76,7 +76,7 @@ public class TimeoutTest {
             ConnectionPool db = new ConnectionPoolBuilder()
                     .hostname("localhost")
                     .port(port)
-                    .connectTimeout(1000)
+                    .connectTimeout(1, TimeUnit.SECONDS)
                     .build();
             //when
             db.querySet("select pg_sleep(5)").subscribe(testSubscriber);
@@ -184,15 +184,14 @@ public class TimeoutTest {
     @Test
     public void shouldReconnectAfterTransactionPgTimeout() throws Exception {
         // given
-        Db pool1 = dbr.builder.poolSize(1).build();
-        Db pool2 = dbr.builder.poolSize(1).build();
+        Db pool1 = dbr.builder.poolSize(1).statementTimeout(1, TimeUnit.SECONDS).build();
+        Db pool2 = dbr.builder.poolSize(1).statementTimeout(1, TimeUnit.SECONDS).build();
 
         dbr.query("DROP TABLE IF EXISTS tx_timeout_test");
         dbr.query("CREATE TABLE tx_timeout_test(ID INT PRIMARY KEY)");
 
 
         Function<Integer, Completable> insertRecord = n -> pool2
-                .withTimeout(1, TimeUnit.SECONDS)
                 .begin()
                 .flatMapCompletable(t ->
                         t.querySet("INSERT INTO tx_timeout_test values ($1)", n)

@@ -134,7 +134,7 @@ class DatabaseRule extends ExternalResource {
         String pass = getenv("PG_PASSWORD");
 
         ConnectionPoolBuilder connectionPoolBuilder = new EmbeddedConnectionPoolBuilder()
-                .connectTimeout(1000)
+                .connectTimeout(1, TimeUnit.SECONDS)
                 .poolSize(size);
 
         if (db == null && user == null && pass == null)
