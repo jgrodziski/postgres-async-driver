@@ -34,7 +34,12 @@ public interface ConnectionPool extends Db {
      */
     Single<Connection> getConnection();
 
-    @Override
+    /**
+     * Saves statement timeout that will be used for any connection taken from the pool.
+     * @param timeout  timeout value
+     * @param timeUnit time unit
+     * @return returns connection pool with saved statement timeout
+     */
     ConnectionPool withTimeout(long timeout, TimeUnit timeUnit);
 
     /**

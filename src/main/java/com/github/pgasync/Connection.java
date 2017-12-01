@@ -26,12 +26,21 @@ import java.util.concurrent.TimeUnit;
  */
 public interface Connection extends Db {
     /**
-     * Closes the connection, blocks the calling thread until the connection is closed.
+     * Closes the connection.
      */
     Completable close();
 
-    @Override
+    /**
+     * Sets statement timeout on the connection and returns it.
+     * @param timeout  timeout value
+     * @param timeUnit time unit
+     * @return returns connection with statement timeout set
+     */
     Connection withTimeout(long timeout, TimeUnit timeUnit);
 
+    /**
+     * Tells if connection is open. If a connection is closed it cannot be used anymore.
+     * @return true if open false otherwise
+     */
     boolean isConnected();
 }

@@ -12,26 +12,26 @@
  * limitations under the License.
  */
 
-package com.github.pgasync.impl.netty;
+package com.github.pgasync.impl.protocol;
 
 import com.github.pgasync.ConnectionConfig;
 import com.github.pgasync.SqlException;
 import com.github.pgasync.impl.NettyScheduler;
 import com.github.pgasync.impl.message.*;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.*;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
-import io.netty.handler.flow.FlowControlHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
-import lombok.AllArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import rx.*;
+import rx.Observable;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -40,38 +40,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static com.nurkiewicz.typeof.TypeOf.whenTypeOf;
+import static rx.subscriptions.Subscriptions.create;
 
 /**
- * Netty connection to PostgreSQL backend.
- *
- * @author Antti Laisi
+ * Protocol stream handler.
+ * @author Jacek Sokol
  */
-public class PgProtocolStream {
-    private static final Logger LOG = LoggerFactory.getLogger(PgProtocolStream.class);
+public class ProtocolStream {
+    private static final Logger LOG = LoggerFactory.getLogger(ProtocolStream.class);
 
-    abstract class AbstractConsumer<T> implements Consumer<Message> {
+    abstract class PgConsumer implements Consumer<Message> {
+        abstract void error(Throwable throwable);
+    }
+
+    abstract class ProtocolConsumer<T> extends PgConsumer {
         final SingleSubscriber<T> subscriber;
         final AtomicBoolean done = new AtomicBoolean();
 
         @SuppressWarnings("unchecked")
-        AbstractConsumer(SingleSubscriber<?> subscriber) {
+        ProtocolConsumer(SingleSubscriber<?> subscriber) {
             this.subscriber = (SingleSubscriber<T>) subscriber;
-            subscriber.add(new Subscription() {
-                volatile boolean unsubscribed;
-
-                @Override
-                public void unsubscribe() {
-                    if (!isUnsubscribed()) {
-                        unsubscribed = true;
-                        AbstractConsumer.this.unsubscribe();
-                    }
-                }
-
-                @Override
-                public boolean isUnsubscribed() {
-                    return unsubscribed;
-                }
-            });
+            subscriber.add(create(ProtocolConsumer.this::unsubscribe));
         }
 
         void complete(T value) {
@@ -90,15 +79,6 @@ public class PgProtocolStream {
             subscriber.onError(throwable);
         }
 
-        abstract void unsubscribe();
-    }
-
-    abstract class ProtocolConsumer<T> extends AbstractConsumer<T> {
-        ProtocolConsumer(SingleSubscriber<?> subscriber) {
-            super(subscriber);
-        }
-
-        @Override
         void unsubscribe() {
             if (!done.get()) closeStream();
         }
@@ -113,20 +93,39 @@ public class PgProtocolStream {
         }
     }
 
-    abstract class ChannelConsumer extends AbstractConsumer<Void> {
-        final String channel;
+    abstract class StreamConsumer<T> extends PgConsumer {
+        final Emitter<T> subscriber;
+        final AtomicBoolean done = new AtomicBoolean();
+        final String query;
 
-        ChannelConsumer(SingleSubscriber<?> subscriber, String channel) {
-            super(subscriber);
-            this.channel = channel;
+        @SuppressWarnings("unchecked")
+        StreamConsumer(Emitter<T> subscriber, String query) {
+            this.subscriber = subscriber;
+            this.query = query;
+            subscriber.setSubscription(create(StreamConsumer.this::unsubscribe));
         }
 
-        @Override
+        void complete() {
+            if (!done.get()) {
+                done.set(true);
+                subscriber.onCompleted();
+            }
+        }
+
+        public void error(Throwable throwable) {
+            done.set(true);
+            subscriber.onError(throwable);
+        }
+
         void unsubscribe() {
-            ctx.executor().submit(() ->
-                    Optional.of(listeners.get(channel))
-                            .ifPresent(list -> list.remove(this))
-            );
+            if (!done.get()) closeStream();
+        }
+
+        private void closeStream() {
+            LOG.warn("Closing channel due to premature cancellation [{}]", query);
+            subscribers.remove(this);
+            closed = true;
+            ctx.channel().close();
         }
     }
 
@@ -134,14 +133,14 @@ public class PgProtocolStream {
     private final ConnectionConfig config;
 
     private final GenericFutureListener<Future<? super Object>> onError;
-    private final Queue<ProtocolConsumer<?>> subscribers = new LinkedBlockingDeque<>(); // TODO: limit pipeline queue depth
-    private final ConcurrentMap<String, List<ChannelConsumer>> listeners = new ConcurrentHashMap<>();
+    private final Queue<PgConsumer> subscribers = new LinkedBlockingDeque<>(); // TODO: limit pipeline queue depth
+    private final ConcurrentMap<String, List<StreamConsumer<String>>> listeners = new ConcurrentHashMap<>();
 
     private ChannelHandlerContext ctx;
     private boolean closed;
     private Scheduler scheduler;
 
-    public PgProtocolStream(EventLoopGroup group, ConnectionConfig config) {
+    public ProtocolStream(EventLoopGroup group, ConnectionConfig config) {
         this.group = group;
         this.config = config;
         this.onError = future -> {
@@ -173,11 +172,14 @@ public class PgProtocolStream {
 
             subscribers.add(consumer);
 
+            InboundChannelInitializer inboundChannelInitializer = new InboundChannelInitializer(startup);
+            ProtocolHandler protocolHandler = new ProtocolHandler(subscribers, listeners, this::handleError);
+
             new Bootstrap()
                     .group(group)
                     .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, config.connectTimeout())
                     .channel(NioSocketChannel.class)
-                    .handler(new ProtocolInitializer(new InboundChannelInitializer(startup)))
+                    .handler(new ProtocolInitializer(config, inboundChannelInitializer, protocolHandler))
                     .connect(config.address())
                     .addListener(onError);
         });
@@ -207,54 +209,93 @@ public class PgProtocolStream {
                 .toCompletable();
     }
 
-    public Completable command(StreamHandler handler, Message... messages) {
+    public Observable<Message> command(Message... messages) {
         if (messages.length == 0)
-            return Completable.error(new IllegalArgumentException("No messages to send"));
+            return Observable.error(new IllegalArgumentException("No messages to send"));
 
-        return Single
-                .create(subscriber -> {
-                    ProtocolConsumer<Void> consumer = new ProtocolConsumer<Void>(subscriber) {
-                        @Override
-                        public void accept(Message message) {
-                            whenTypeOf(message)
-                                    .is(ErrorResponse.class).then(e -> error(toSqlException(e)))
-                                    .is(ReadyForQuery.class).then(r -> complete())
-                                    .is(CommandComplete.class).then(handler::complete)
-                                    .is(RowDescription.class).then(handler::rowDescription)
-                                    .is(DataRow.class).then(handler::dataRow);
-                        }
-                    };
+        return Observable.unsafeCreate(BackPressuredEmitter.<Message>create(emitter -> {
+            StreamConsumer<Message> consumer = new StreamConsumer<Message>(emitter, messages[0].toString()) {
+                SqlException exception;
 
-                    if (!isConnected())
-                        consumer.error(new IllegalStateException("Channel is closed [" + messages[0] + "]"));
+                @Override
+                public void accept(Message message) {
+                    whenTypeOf(message)
+                            .is(ErrorResponse.class).then(this::handleError)
+                            .is(ReadyForQuery.class).then(r -> handleReady())
+                            .is(CommandComplete.class).then(this::handleCompletion)
+                            .is(Message.class).then(emitter::onNext);
+                }
+
+                private void handleCompletion(CommandComplete commandComplete) {
+                    enableAutoRead();
+                    emitter.onNext(commandComplete);
+                }
+
+                private void handleReady() {
+                    if (exception == null)
+                        complete();
                     else
-                        ensureInLoop(() -> {
-                            subscribers.add(consumer);
-                            handler.init(ctx);
-                            write(messages);
-                        });
-                })
-                .toCompletable();
+                        error(exception);
+                }
+
+                private void handleError(ErrorResponse e) {
+                    exception = toSqlException(e);
+                    enableAutoRead();
+                }
+            };
+
+            if (!isConnected())
+                consumer.error(new IllegalStateException("Channel is closed [" + messages[0] + "]"));
+            else
+                ensureInLoop(() -> {
+                    subscribers.add(consumer);
+                    write(messages);
+                    disableAutoRead();
+                    readNext();
+                });
+        }, this::readNext));
     }
 
-    public Completable listen(Consumer<String> consumer, String channel) {
-        return Single
-                .create(subscriber -> {
-                    ChannelConsumer channelConsumer = new ChannelConsumer(subscriber, channel) {
-                        @Override
-                        public void accept(Message message) {
-                            whenTypeOf(message)
-                                    .is(ErrorResponse.class).then(e -> error(toSqlException(e)))
-                                    .is(NotificationResponse.class).then(n -> consumer.accept(n.payload()));
-                        }
-                    };
+    public Observable<String> listen(String channel) {
+        return Observable.unsafeCreate(BackPressuredEmitter.<String>create(emitter -> {
+            StreamConsumer<String> consumer = new StreamConsumer<String>(emitter, "LISTEN") {
+                @Override
+                public void accept(Message message) {
+                    whenTypeOf(message)
+                            .is(ErrorResponse.class).then(this::handleError)
+                            .is(CommandComplete.class).then(commandComplete -> enableAutoRead())
+                            .is(NotificationResponse.class).then(notificationResponse -> emitter.onNext(notificationResponse.payload()));
+                }
 
-                    List<ChannelConsumer> consumers = listeners.getOrDefault(channel, new LinkedList<>());
-                    consumers.add(channelConsumer);
+                private void handleError(ErrorResponse e) {
+                    emitter.onError(toSqlException(e));
+                    enableAutoRead();
+                }
+
+                @Override
+                protected void unsubscribe() {
+                    enableAutoRead();
+                    ctx.executor().submit(() ->
+                            Optional.of(listeners.get(channel)).ifPresent(list -> {
+                                list.remove(this);
+                                if (list.isEmpty())
+                                    listeners.remove(channel);
+                            })
+                    );
+                }
+            };
+
+            if (!isConnected())
+                consumer.error(new IllegalStateException("Channel is closed [LISTEN]"));
+            else
+                ensureInLoop(() -> {
+                    List<StreamConsumer<String>> consumers = listeners.getOrDefault(channel, new LinkedList<>());
+                    consumers.add(consumer);
                     listeners.put(channel, consumers);
-                })
-                .subscribeOn(scheduler)
-                .toCompletable();
+                    disableAutoRead();
+                    readNext();
+                });
+        }, this::readNext));
     }
 
     public boolean isConnected() {
@@ -293,11 +334,16 @@ public class PgProtocolStream {
         ctx.flush();
     }
 
-    private void publishNotification(NotificationResponse notification) {
-        Optional.of(listeners.get(notification.channel()))
-                .ifPresent(consumers ->
-                        consumers.forEach(c -> c.accept(notification))
-                );
+    private void readNext() {
+        ctx.channel().read();
+    }
+
+    private void enableAutoRead() {
+        ctx.channel().config().setAutoRead(true);
+    }
+
+    private void disableAutoRead() {
+        ctx.channel().config().setAutoRead(false);
     }
 
     private void handleError(Throwable throwable) {
@@ -315,24 +361,6 @@ public class PgProtocolStream {
         return new SqlException(error.level().name(), error.code(), error.message());
     }
 
-    @AllArgsConstructor
-    private class ProtocolInitializer extends ChannelInitializer<Channel> {
-        private final ChannelHandler onActive;
-
-        @Override
-        protected void initChannel(Channel channel) throws Exception {
-            if (config.useSsl())
-                channel.pipeline().addLast(new SslInitiator());
-
-            channel.pipeline().addLast(new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 1, 4, -4, 0, true));
-            channel.pipeline().addLast(new ByteBufMessageDecoder());
-            channel.pipeline().addLast(new ByteBufMessageEncoder());
-            channel.pipeline().addLast(new FlowControlHandler(true));
-            channel.pipeline().addLast(new ProtocolHandler());
-            channel.pipeline().addLast(onActive);
-        }
-    }
-
     private class InboundChannelInitializer extends ChannelInboundHandlerAdapter {
         private final StartupMessage startup;
 
@@ -342,7 +370,7 @@ public class PgProtocolStream {
 
         @Override
         public void channelActive(ChannelHandlerContext context) {
-            PgProtocolStream.this.ctx = context;
+            ProtocolStream.this.ctx = context;
             scheduler = NettyScheduler.forEventExecutor(ctx.executor());
 
             if (config.useSsl())
@@ -367,26 +395,4 @@ public class PgProtocolStream {
         }
     }
 
-    private class ProtocolHandler extends ChannelInboundHandlerAdapter {
-        @Override
-        public void channelRead(ChannelHandlerContext context, Object msg) throws Exception {
-            LOG.trace("Reading: {}", msg);
-
-            whenTypeOf(msg)
-                    .is(NotificationResponse.class).then(PgProtocolStream.this::publishNotification)
-                    .is(ReadyForQuery.class).then(r -> subscribers.poll().accept(r))
-                    .is(Message.class).then(m -> subscribers.peek().accept(m));
-        }
-
-        @Override
-        public void channelInactive(ChannelHandlerContext context) throws Exception {
-            if (!subscribers.isEmpty())
-                exceptionCaught(context, new IOException("Channel state changed to inactive"));
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext context, Throwable cause) throws Exception {
-            handleError(cause);
-        }
-    }
 }

@@ -25,6 +25,7 @@ public interface QueryExecutor {
      * Executes an anonymous prepared statement. Uses native PostgreSQL syntax with $arg instead of ?
      * to mark parameters. Supported parameter types are String, Character, Number, Time, Date, Timestamp
      * and byte[].
+     * Supports back-pressure in the returned stream.
      *
      * @param sql    SQL to execute
      * @param params Parameter values
@@ -36,6 +37,7 @@ public interface QueryExecutor {
      * Executes an anonymous prepared statement. Uses native PostgreSQL syntax with $arg instead of ?
      * to mark parameters. Supported parameter types are String, Character, Number, Time, Date, Timestamp
      * and byte[].
+     * Doesn't support back-pressure.
      *
      * @param sql    SQL to execute
      * @param params Parameter values
@@ -44,10 +46,10 @@ public interface QueryExecutor {
     Single<ResultSet> querySet(String sql, Object... params);
 
     /**
-     * Sets statement timeout on a connection and returns is.
+     * Sets statement timeout on the executor and returns it.
      * @param timeout  timeout value
      * @param timeUnit time unit
-     * @return Cold single that returns connection with timeout set
+     * @return returns query executor with timeout set
      */
     QueryExecutor withTimeout(long timeout, TimeUnit timeUnit);
 
@@ -82,7 +84,7 @@ public interface QueryExecutor {
      * @param onResult Called when query is completed
      * @param onError  Called on exception thrown
      */
-    default void query(String sql, List/*<Object>*/ params, Consumer<ResultSet> onResult, Consumer<Throwable> onError) {
+    default void query(String sql, List<?> params, Consumer<ResultSet> onResult, Consumer<Throwable> onError) {
         querySet(sql, params.toArray()).subscribe(onResult::accept, onError::accept);
     }
 }

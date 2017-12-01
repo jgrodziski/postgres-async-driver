@@ -7,9 +7,15 @@ import lombok.RequiredArgsConstructor;
 import rx.Scheduler;
 import rx.Subscription;
 import rx.functions.Action0;
+import rx.subscriptions.BooleanSubscription;
+import rx.subscriptions.Subscriptions;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Simple bridge for Netty event-loop to RxScheduler.
+ * @author Jacek Sokol
+ */
 @RequiredArgsConstructor(staticName = "forEventExecutor")
 public class NettyScheduler extends Scheduler {
     private final EventExecutor eventExecutor;
@@ -20,46 +26,28 @@ public class NettyScheduler extends Scheduler {
     }
 
     private class NettyWorker extends Worker {
-        private volatile boolean unsubscribed;
+        private final Subscription delegate = new BooleanSubscription();
 
         @Override
         public Subscription schedule(Action0 action) {
             Future<?> future = eventExecutor.submit(action::call);
-            return new NettySubscription(future);
+            return Subscriptions.from(future);
         }
 
         @Override
         public Subscription schedule(Action0 action, long delayTime, TimeUnit unit) {
             ScheduledFuture<?> future = eventExecutor.schedule(action::call, delayTime, unit);
-            return new NettySubscription(future);
+            return Subscriptions.from(future);
         }
 
         @Override
         public void unsubscribe() {
-            unsubscribed = true;
+            delegate.unsubscribe();
         }
 
         @Override
         public boolean isUnsubscribed() {
-            return unsubscribed;
-        }
-    }
-
-    private class NettySubscription implements Subscription {
-        private final Future<?> future;
-
-        NettySubscription(Future<?> future) {
-            this.future = future;
-        }
-
-        @Override
-        public void unsubscribe() {
-            future.cancel(true);
-        }
-
-        @Override
-        public boolean isUnsubscribed() {
-            return future.isCancelled();
+            return delegate.isUnsubscribed();
         }
     }
 }

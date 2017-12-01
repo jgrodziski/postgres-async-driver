@@ -39,7 +39,12 @@ public interface Transaction extends QueryExecutor {
      */
     Completable rollback();
 
-    @Override
+    /**
+     * Sets statement timeout on the transaction and returns it.
+     * @param timeout  timeout value
+     * @param timeUnit time unit
+     * @return returns transaction with timeout set
+     */
     Transaction withTimeout(long timeout, TimeUnit timeUnit);
 
     /**

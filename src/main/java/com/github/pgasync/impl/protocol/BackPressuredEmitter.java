@@ -1,12 +1,10 @@
-package com.github.pgasync.impl;
+package com.github.pgasync.impl.protocol;
 
-import com.github.pgasync.Row;
-import com.github.pgasync.impl.conversion.DataConverter;
-import com.github.pgasync.impl.message.CommandComplete;
-import com.github.pgasync.impl.message.DataRow;
-import com.github.pgasync.impl.message.RowDescription;
-import com.github.pgasync.impl.netty.StreamHandler;
-import rx.*;
+import rx.Emitter;
+import rx.Observable.OnSubscribe;
+import rx.Producer;
+import rx.Subscriber;
+import rx.Subscription;
 import rx.functions.Cancellable;
 import rx.internal.operators.BackpressureUtils;
 import rx.internal.subscriptions.CancellableSubscription;
@@ -18,20 +16,26 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscription, Producer {
+/**
+ * Emitter that supports back-pressure via injectable method.
+ *
+ * @param <T> type of elements in the stream
+ * @author Jacek Sokol
+ */
+public class BackPressuredEmitter<T> implements Emitter<T>, Subscription, Producer {
     private static final int BUFFER_SIZE = 256;
 
     private final SerialSubscription serial = new SerialSubscription();
-    private final BlockingDeque<Row> buffer = new LinkedBlockingDeque<>(BUFFER_SIZE);
     private final AtomicLong requested = new AtomicLong();
     private final AtomicInteger wip = new AtomicInteger();
+    private final BlockingDeque<T> buffer = new LinkedBlockingDeque<>(BUFFER_SIZE);
 
-    private final Subscriber<Row> subscriber;
-    private final DataConverter dataConverter;
+    private final Subscriber<T> subscriber;
+    private final Runnable readNext;
 
-    private BackpressuredEmitter(Subscriber<Row> subscriber, DataConverter dataConverter) {
+    private BackPressuredEmitter(Subscriber<T> subscriber, Runnable readNext) {
         this.subscriber = subscriber;
-        this.dataConverter = dataConverter;
+        this.readNext = readNext;
     }
 
     @Override
@@ -55,7 +59,6 @@ class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscr
             return;
 
         try {
-            readNext();
             subscriber.onCompleted();
         } finally {
             serial.unsubscribe();
@@ -68,7 +71,6 @@ class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscr
             return;
 
         try {
-            enableAutoRead();
             subscriber.onError(e);
         } finally {
             serial.unsubscribe();
@@ -76,7 +78,7 @@ class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscr
     }
 
     @Override
-    public void onNext(Row t) {
+    public void onNext(T t) {
         buffer.addFirst(t);
         drain();
     }
@@ -99,9 +101,6 @@ class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscr
     }
 
     private void drain() {
-        if (context() == null)
-            return;
-
         if (wip.getAndIncrement() != 0)
             return;
 
@@ -114,7 +113,7 @@ class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscr
             BackpressureUtils.produced(requested, emitted);
 
             if (requested.get() - buffer.size() > 0)
-                readNext();
+                readNext.run();
 
             missed = wip.addAndGet(-missed);
             if (missed == 0)
@@ -126,8 +125,7 @@ class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscr
         int emitted = 0;
 
         while (requested.get() > 0 && buffer.size() > 0) {
-            Row row = buffer.pollLast();
-
+            T row = buffer.pollLast();
             subscriber.onNext(row);
             emitted++;
         }
@@ -136,42 +134,12 @@ class BackpressuredEmitter extends StreamHandler implements Emitter<Row>, Subscr
     }
 
     @SuppressWarnings("unchecked")
-    static Observable.OnSubscribe<Row> create(Consumer<BackpressuredEmitter> emitter, DataConverter dataConverter) {
+    static <R> OnSubscribe<R> create(Consumer<Emitter<R>> emitter, Runnable readNext) {
         return subscriber -> {
-            BackpressuredEmitter extEmitter = new BackpressuredEmitter((Subscriber<Row>) subscriber, dataConverter);
-            subscriber.add(extEmitter);
-            subscriber.setProducer(extEmitter);
-            emitter.accept(extEmitter);
+            BackPressuredEmitter<R> backPressuredEmitter = new BackPressuredEmitter(subscriber, readNext);
+            subscriber.add(backPressuredEmitter);
+            subscriber.setProducer(backPressuredEmitter);
+            emitter.accept(backPressuredEmitter);
         };
-    }
-
-    @Override
-    public void rowDescription(RowDescription rowDescription) {
-        super.rowDescription(rowDescription);
-        disableAutoRead();
-        drain();
-    }
-
-    @Override
-    public void complete(CommandComplete commandComplete) {
-        enableAutoRead();
-        super.complete(commandComplete);
-    }
-
-    @Override
-    public void dataRow(DataRow dataRow) {
-        onNext(PgRow.create(dataRow, columns(), dataConverter));
-    }
-
-    private void enableAutoRead() {
-        context().channel().config().setAutoRead(true);
-    }
-
-    private void disableAutoRead() {
-        context().channel().config().setAutoRead(false);
-    }
-
-    private void readNext() {
-        context().channel().read();
     }
 }

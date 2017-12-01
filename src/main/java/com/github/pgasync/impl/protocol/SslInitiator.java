@@ -1,4 +1,4 @@
-package com.github.pgasync.impl.netty;
+package com.github.pgasync.impl.protocol;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;

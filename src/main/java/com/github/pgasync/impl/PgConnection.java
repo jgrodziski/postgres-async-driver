@@ -20,31 +20,37 @@ import com.github.pgasync.Row;
 import com.github.pgasync.Transaction;
 import com.github.pgasync.impl.conversion.DataConverter;
 import com.github.pgasync.impl.message.*;
-import com.github.pgasync.impl.netty.PgProtocolStream;
-import com.github.pgasync.impl.netty.StreamHandler;
+import com.github.pgasync.impl.protocol.ProtocolStream;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 import rx.Completable;
-import rx.Emitter;
 import rx.Observable;
 import rx.Single;
+import rx.functions.Action0;
+import rx.functions.Func2;
 
 import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.nurkiewicz.typeof.TypeOf.whenTypeOf;
 
 /**
  * A connection to PostgreSQL backed. The postmaster forks a backend process for
  * each connection. A connection can process only a single queryRows at a time.
  *
  * @author Antti Laisi
+ * @author Jacek Sokol
  */
 public class PgConnection implements Connection {
-    private final PgProtocolStream stream;
+    private final ProtocolStream stream;
     private final DataConverter dataConverter;
     private long timeout = 0;
     private Completable setTimeout = Completable.complete();
 
-    PgConnection(PgProtocolStream stream, DataConverter dataConverter) {
+    PgConnection(ProtocolStream stream, DataConverter dataConverter) {
         this.stream = stream;
         this.dataConverter = dataConverter;
     }
@@ -57,18 +63,18 @@ public class PgConnection implements Connection {
     @Override
     public Observable<String> listen(String channel) {
         // TODO: wait for commit before sending unlisten as otherwise it can be rolled back
+        AtomicBoolean stopped = new AtomicBoolean();
+        Action0 ensureStopped = () -> {
+            if (!stopped.get()) {
+                stopped.set(true);
+                querySet("UNLISTEN " + channel).subscribe();
+            }
+        };
+
         return querySet("LISTEN " + channel)
-                .flatMapObservable(__ ->
-                        Observable.<String>create(emitter ->
-                                        emitter.setSubscription(
-                                                stream.listen(emitter::onNext, channel)
-                                                        .doOnCompleted(emitter::onCompleted)
-                                                        .doOnError(emitter::onError)
-                                                        .subscribe()
-                                        ),
-                                Emitter.BackpressureMode.LATEST)
-                )
-                .doOnUnsubscribe(() -> querySet("UNLISTEN " + channel).subscribe());
+                .flatMapObservable(__ -> stream.listen(channel))
+                .doOnUnsubscribe(ensureStopped)
+                .doOnTerminate(ensureStopped);
     }
 
     @Override
@@ -78,22 +84,24 @@ public class PgConnection implements Connection {
 
     @Override
     public Observable<Row> queryRows(String sql, Object... params) {
-        Consumer<BackpressuredEmitter> emitterAction = emitter ->
-                emitter.setSubscription(
-                        sendCommand(emitter, sql, params)
-                                .doOnCompleted(emitter::onCompleted)
-                                .doOnError(emitter::onError)
-                                .onErrorComplete()
-                                .subscribe()
-                );
-
-        return Observable.unsafeCreate(BackpressuredEmitter.create(emitterAction, dataConverter));
+        ResultBuilder resultBuilder = new ResultBuilder(dataConverter);
+        return sendCommand(sql, params).flatMap(resultBuilder::handle);
     }
 
     @Override
     public Single<ResultSet> querySet(String sql, Object... params) {
-        ResultSetHandler handler = new ResultSetHandler();
-        return sendCommand(handler, sql, params).toSingle(handler::resultSet);
+        ResultBuilder resultBuilder = new ResultBuilder(dataConverter);
+        Func2<ArrayList<Row>, Row, ArrayList<Row>> reducer = (list, row) -> {
+            list.add(row);
+            return list;
+        };
+
+        return sendCommand(sql, params)
+                .flatMap(resultBuilder::handle)
+                .reduce(new ArrayList<>(), reducer)
+                .<ResultSet>map(rows -> PgResultSet.create(rows, resultBuilder.columns(), resultBuilder.updated()))
+                .last()
+                .toSingle();
     }
 
     @Override
@@ -101,7 +109,7 @@ public class PgConnection implements Connection {
         long millis = timeUnit.toMillis(value);
         if (millis != timeout) {
             timeout = millis;
-            setTimeout = sendCommand(StreamHandler.ignoreData(), "SET statement_timeout = " + millis, new Object[]{});
+            setTimeout = sendCommand("SET statement_timeout = " + millis, new Object[]{}).last().toCompletable();
         }
 
         return this;
@@ -112,11 +120,10 @@ public class PgConnection implements Connection {
         return stream.isConnected();
     }
 
-    private Completable sendCommand(StreamHandler handler, String sql, Object[] params) {
-        Completable command = (params == null || params.length == 0)
-                ? stream.command(handler, new Query(sql))
+    private Observable<Message> sendCommand(String sql, Object[] params) {
+        Observable<Message> command = (params == null || params.length == 0)
+                ? stream.command(new Query(sql))
                 : stream.command(
-                handler,
                 new Parse(sql),
                 new Bind(dataConverter.fromParameters(params)),
                 ExtendedQuery.DESCRIBE,
@@ -138,16 +145,46 @@ public class PgConnection implements Connection {
                 .toSingleDefault(this);
     }
 
-    class ResultSetHandler extends StreamHandler {
-        private List<Row> rows = new ArrayList<>();
+    @Getter
+    @Accessors(fluent = true)
+    static class ResultBuilder {
+        private final DataConverter dataConverter;
 
-        ResultSet resultSet() {
-            return PgResultSet.create(rows, columns(), updated());
+        private Map<String, PgColumn> columns;
+        private int updated;
+
+        ResultBuilder(DataConverter dataConverter) {
+            this.dataConverter = dataConverter;
         }
 
-        @Override
-        public void dataRow(DataRow dataRow) {
-            rows.add(PgRow.create(dataRow, columns(), dataConverter));
+        Observable<Row> handle(Message message) {
+            return whenTypeOf(message)
+                    .is(DataRow.class).thenReturn(dataRow ->
+                            Observable.<Row>just(
+                                    PgRow.create(dataRow, columns, dataConverter)
+                            )
+                    )
+                    .is(RowDescription.class).thenReturn(rowDescription -> {
+                        columns = readColumns(rowDescription.columns());
+                        return Observable.empty();
+                    })
+                    .is(CommandComplete.class).thenReturn(commandComplete -> {
+                        updated = commandComplete.updatedRows();
+                        return Observable.empty();
+                    })
+                    .get();
+        }
+
+        private Map<String, PgColumn> readColumns(RowDescription.ColumnDescription[] descriptions) {
+            Map<String, PgColumn> columns = new HashMap<>();
+
+            for (int i = 0; i < descriptions.length; i++) {
+                String columnName = descriptions[i].name().toUpperCase();
+                PgColumn pgColumn = PgColumn.create(i, descriptions[i].type());
+                columns.put(columnName, pgColumn);
+            }
+
+            return columns;
         }
     }
 

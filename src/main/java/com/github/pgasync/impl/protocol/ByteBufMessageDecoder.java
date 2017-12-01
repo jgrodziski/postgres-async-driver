@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package com.github.pgasync.impl.netty;
+package com.github.pgasync.impl.protocol;
 
 import com.github.pgasync.impl.io.*;
 import io.netty.buffer.ByteBuf;

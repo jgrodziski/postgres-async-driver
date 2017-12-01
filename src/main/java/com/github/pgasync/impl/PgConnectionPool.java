@@ -16,7 +16,7 @@ package com.github.pgasync.impl;
 
 import com.github.pgasync.*;
 import com.github.pgasync.impl.conversion.DataConverter;
-import com.github.pgasync.impl.netty.PgProtocolStream;
+import com.github.pgasync.impl.protocol.ProtocolStream;
 import io.netty.channel.EventLoopGroup;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -40,7 +40,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * Pool for backend connections. Callbacks are queued and executed when pool has an available
  * connection.
  *
- * @author Antti Laisi
+ * @author Jacek Sokol
  */
 public class PgConnectionPool implements ConnectionPool {
     private static final Logger LOG = LoggerFactory.getLogger(PgConnectionPool.class);
@@ -182,7 +182,7 @@ public class PgConnectionPool implements ConnectionPool {
 
         IntStream.range(0, connectionsToOpen)
                 .forEach(__ ->
-                        new PgConnection(new PgProtocolStream(eventLoopGroup, config), dataConverter)
+                        new PgConnection(new ProtocolStream(eventLoopGroup, config), dataConverter)
                                 .connect(config.username(), config.password(), config.database())
                                 .doOnEach(___ -> houseKeepSubscribers())
                                 .doOnSuccess(connection -> {

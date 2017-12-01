@@ -9,7 +9,7 @@ import rx.Completable;
  */
 public interface Db extends QueryExecutor, Listenable {
     /**
-     * Closes the pool, blocks the calling thread until connections are closed.
+     * Closes the pool. Under the hood it waits for all connections to be released.
      */
     Completable close();
 }
