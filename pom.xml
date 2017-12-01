@@ -8,19 +8,23 @@
         <version>9</version>
     </parent>
 
-    <groupId>com.github.alaisi.pgasync</groupId>
+    <groupId>com.github.jaceksokol</groupId>
     <artifactId>postgres-async-driver</artifactId>
-    <version>0.10.custom</version>
+    <version>0.1.0</version>
 
     <name>postgres-async-driver</name>
     <description>Asynchronous PostgreSQL Java driver</description>
 
-    <url>https://github.com/alaisi/postgres-async-driver</url>
+    <url>https://github.com/jaceksokol/postgres-async-driver</url>
     <inceptionYear>2014</inceptionYear>
     <developers>
         <developer>
             <name>Antti Laisi</name>
             <url>https://github.com/alaisi</url>
+        </developer>
+        <developer>
+            <name>Jacek Sokol</name>
+            <url>https://github.com/jaceksokol</url>
         </developer>
     </developers>
     <licenses>
@@ -31,13 +35,13 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:git@github.com:alaisi/postgres-async-driver.git</connection>
-        <developerConnection>scm:git:git@github.com:alaisi/postgres-async-driver.git</developerConnection>
-        <url>git@github.com:alaisi/postgres-async-driver.git</url>
+        <connection>scm:git:git@github.com:jaceksokol/postgres-async-driver.git</connection>
+        <developerConnection>scm:git:git@github.com:jaceksokol/postgres-async-driver.git</developerConnection>
+        <url>git@github.com:jaceksokol/postgres-async-driver.git</url>
     </scm>
     <issueManagement>
         <system>github</system>
-        <url>https://github.com/alaisi/postgres-async-driver/issues</url>
+        <url>https://github.com/jaceksokol/postgres-async-driver/issues</url>
     </issueManagement>
 
     <prerequisites>
