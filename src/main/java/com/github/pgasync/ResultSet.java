@@ -15,7 +15,6 @@
 package com.github.pgasync;
 
 import java.util.Collection;
-import java.util.Iterator;
 
 /**
  * SQL result set. Consists of 0-n result rows and amount of updated
@@ -29,11 +28,6 @@ public interface ResultSet extends Iterable<Row> {
      * @return Column names in order.
      */
     Collection<String> getColumns();
-
-    /**
-     * @return Row iterator
-     */
-    Iterator<Row> iterator();
 
     /**
      * @param index Row index starting from 0

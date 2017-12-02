@@ -31,11 +31,13 @@ public interface Transaction extends QueryExecutor {
 
     /**
      * Commits a transaction
+     * @return cold completable
      */
     Completable commit();
 
     /**
      * Rollbacks a transaction.
+     * @return cold completable
      */
     Completable rollback();
 

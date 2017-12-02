@@ -21,10 +21,9 @@ package com.github.pgasync;
  * @author Antti Laisi
  */
 public class SqlException extends RuntimeException {
-
     private static final long serialVersionUID = 1L;
 
-    final String code;
+    private final String code;
 
     public SqlException(String level, String code, String message) {
         super(level + ": SQLSTATE=" + code + ", MESSAGE=" + message);

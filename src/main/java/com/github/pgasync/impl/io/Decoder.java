@@ -31,6 +31,7 @@ public interface Decoder<T extends Message> {
     byte getMessageId();
 
     /**
+     * @param buffer byte to decode
      * @return Decoded message
      */
     T read(ByteBuffer buffer);

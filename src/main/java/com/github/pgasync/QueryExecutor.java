@@ -41,7 +41,7 @@ public interface QueryExecutor {
      *
      * @param sql    SQL to execute
      * @param params Parameter values
-     * @return Cold observable that emits a single result set.
+     * @return Cold single that emits a single result set.
      */
     Single<ResultSet> querySet(String sql, Object... params);
 

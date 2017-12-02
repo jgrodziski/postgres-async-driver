@@ -23,7 +23,6 @@ import static com.github.pgasync.impl.io.IO.getCString;
 
 /**
  * See <a href="www.postgresql.org/docs/9.3/static/protocol-message-formats.html">PostgreSQL message formats</a>
- * <p>
  * <pre>
  * ErrorResponse (B)
  *  Byte1('E')

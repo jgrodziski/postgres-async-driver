@@ -31,6 +31,7 @@ public interface ConnectionPool extends Db {
      * Executes a {@link java.util.function.Consumer} callback when a connection is
      * available. Connection passed to callback must be freed with
      * {@link com.github.pgasync.ConnectionPool#release(Connection)}
+     * @return cold single that returns connection from pool
      */
     Single<Connection> getConnection();
 
@@ -46,6 +47,7 @@ public interface ConnectionPool extends Db {
      * Releases a connection back to the pool.
      *
      * @param connection Connection fetched with getConnection
+     * @return cold completable
      */
     Completable release(Connection connection);
 }
