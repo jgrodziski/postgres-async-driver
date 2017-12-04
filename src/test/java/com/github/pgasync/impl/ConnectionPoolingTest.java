@@ -82,6 +82,17 @@ public class ConnectionPoolingTest {
         assertThat(timeSpent, is(both(greaterThanOrEqualTo(5000L)).and(lessThan(6000L))));
     }
 
+    @Test
+    public void shouldForciblyClosePool() throws Exception {
+        ConnectionPool pool = dbr.builder.poolSize(1).poolCloseTimeout(500, TimeUnit.MILLISECONDS).build();
+
+        pool.getConnection().toBlocking().value();
+
+        boolean closedCorrectly = pool.close().await(5, TimeUnit.SECONDS);
+
+        assertTrue(closedCorrectly);
+    }
+
     private long testTimeout(Single<ResultSet> query) {
         long time = System.currentTimeMillis();
         try {

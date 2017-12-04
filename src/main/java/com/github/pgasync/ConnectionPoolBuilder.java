@@ -33,7 +33,6 @@ import java.util.concurrent.TimeUnit;
 public class ConnectionPoolBuilder {
     private static final int DEFAULT_PORT = 5432;
     private static final int DEFAULT_POOL_SIZE = 4;
-    private static final long DEFAULT_CONNECT_TIMEOUT = 30000;
 
     private final List<Converter<?>> converters = new ArrayList<>();
     private DatabaseConfigBuilder configBuilder = DatabaseConfig.builder();
@@ -42,7 +41,8 @@ public class ConnectionPoolBuilder {
 
     public ConnectionPoolBuilder() {
         poolSize(DEFAULT_POOL_SIZE);
-        connectTimeout(DEFAULT_CONNECT_TIMEOUT, TimeUnit.MILLISECONDS);
+        connectTimeout(30, TimeUnit.SECONDS);
+        poolCloseTimeout(15, TimeUnit.SECONDS);
     }
 
     /**
@@ -111,6 +111,11 @@ public class ConnectionPoolBuilder {
 
     public ConnectionPoolBuilder statementTimeout(long value, TimeUnit timeUnit) {
         configBuilder.statementTimeout((int) timeUnit.toMillis(value));
+        return this;
+    }
+
+    public ConnectionPoolBuilder poolCloseTimeout(long value, TimeUnit timeUnit) {
+        configBuilder.poolCloseTimeout((int) timeUnit.toMillis(value));
         return this;
     }
 }

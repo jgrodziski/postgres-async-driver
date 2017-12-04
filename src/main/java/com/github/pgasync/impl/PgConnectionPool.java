@@ -26,6 +26,7 @@ import rx.Observable;
 import rx.Single;
 import rx.SingleSubscriber;
 import rx.functions.Action0;
+import rx.schedulers.Schedulers;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -100,6 +101,7 @@ public class PgConnectionPool implements ConnectionPool {
         revokeSubscribers();
 
         return waitForConnectionsToBeReleased()
+                .observeOn(Schedulers.computation())
                 .andThen(closeEventLoop())
                 .doOnCompleted(() -> LOG.info("Connection pool closed"));
     }
@@ -121,7 +123,7 @@ public class PgConnectionPool implements ConnectionPool {
     private Completable waitForConnectionsToBeReleased() {
         AtomicBoolean done = new AtomicBoolean();
         return Observable
-                .interval(100, 1000, MILLISECONDS)
+                .interval(100, 100, MILLISECONDS)
                 .doOnSubscribe(() -> LOG.debug("Waiting for connections to be released: {}", connections.size()))
                 .doOnNext(__ -> {
                     while (currentSize > 0) {
@@ -129,6 +131,7 @@ public class PgConnectionPool implements ConnectionPool {
                         if (connection != null) {
                             currentSize--;
                             connection.close();
+                            connections.remove(connection);
                         } else {
                             break;
                         }
@@ -136,7 +139,24 @@ public class PgConnectionPool implements ConnectionPool {
                     done.set(currentSize == 0);
                 })
                 .takeWhile(__ -> !done.get())
-                .toCompletable();
+                .toCompletable()
+                .timeout(config.poolCloseTimeout(), MILLISECONDS)
+                .onErrorResumeNext(__ -> forceClose())
+                .doOnCompleted(() -> {
+                    connections.clear();
+                    availableConnections.clear();
+                })
+                .subscribeOn(scheduler);
+    }
+
+    private Completable forceClose() {
+        return Completable.fromAction(() -> {
+            LOG.warn("Forcing connections to close: {}", connections.size());
+            connections.stream()
+                    .map(Connection::close)
+                    .forEach(Completable::subscribe);
+
+        });
     }
 
     private void revokeSubscribers() {
@@ -156,7 +176,7 @@ public class PgConnectionPool implements ConnectionPool {
     public Completable release(Connection connection) {
         return Completable
                 .create(subscriber -> {
-                    if (connections.contains(connection) && ! availableConnections.contains(connection))
+                    if (connections.contains(connection) && !availableConnections.contains(connection))
                         availableConnections.add(connection);
                     managePool();
                     subscriber.onCompleted();
@@ -399,7 +419,7 @@ public class PgConnectionPool implements ConnectionPool {
 
         @Override
         public Completable release(Connection connection) {
-            return PgConnectionPool.this.release(connection.withTimeout(0, SECONDS));
+            return PgConnectionPool.this.release(connection.withTimeout(config.statementTimeout(), SECONDS));
         }
 
         @Override

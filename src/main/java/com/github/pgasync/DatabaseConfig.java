@@ -32,5 +32,6 @@ public class DatabaseConfig {
     int poolSize;
     int connectTimeout;
     int statementTimeout;
+    int poolCloseTimeout;
     boolean useSsl;
 }

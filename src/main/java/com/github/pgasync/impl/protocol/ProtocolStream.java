@@ -44,13 +44,27 @@ import static rx.subscriptions.Subscriptions.create;
 
 /**
  * Protocol stream handler.
+ *
  * @author Jacek Sokol
  */
 public class ProtocolStream {
     private static final Logger LOG = LoggerFactory.getLogger(ProtocolStream.class);
 
     abstract class PgConsumer implements Consumer<Message> {
+        final String query;
+
+        PgConsumer(String query) {
+            this.query = query;
+        }
+
         abstract void error(Throwable throwable);
+
+        void closeStream() {
+            LOG.warn("Closing channel due to premature cancellation [{}]", query);
+            subscribers.remove(this);
+            closed = true;
+            ctx.channel().close();
+        }
     }
 
     abstract class ProtocolConsumer<T> extends PgConsumer {
@@ -58,7 +72,8 @@ public class ProtocolStream {
         final AtomicBoolean done = new AtomicBoolean();
 
         @SuppressWarnings("unchecked")
-        ProtocolConsumer(SingleSubscriber<?> subscriber) {
+        ProtocolConsumer(SingleSubscriber<?> subscriber, String query) {
+            super(query);
             this.subscriber = (SingleSubscriber<T>) subscriber;
             subscriber.add(create(ProtocolConsumer.this::unsubscribe));
         }
@@ -82,26 +97,16 @@ public class ProtocolStream {
         void unsubscribe() {
             if (!done.get()) closeStream();
         }
-
-        private void closeStream() {
-            LOG.warn("Closing channel due to premature cancellation");
-
-            subscribers.remove(this);
-
-            closed = true;
-            ctx.channel().close();
-        }
     }
 
     abstract class StreamConsumer<T> extends PgConsumer {
         final Emitter<T> subscriber;
         final AtomicBoolean done = new AtomicBoolean();
-        final String query;
 
         @SuppressWarnings("unchecked")
         StreamConsumer(Emitter<T> subscriber, String query) {
+            super(query);
             this.subscriber = subscriber;
-            this.query = query;
             subscriber.setSubscription(create(StreamConsumer.this::unsubscribe));
         }
 
@@ -119,13 +124,6 @@ public class ProtocolStream {
 
         void unsubscribe() {
             if (!done.get()) closeStream();
-        }
-
-        private void closeStream() {
-            LOG.warn("Closing channel due to premature cancellation [{}]", query);
-            subscribers.remove(this);
-            closed = true;
-            ctx.channel().close();
         }
     }
 
@@ -152,7 +150,7 @@ public class ProtocolStream {
 
     public Single<Authentication> connect(StartupMessage startup) {
         return Single.create(subscriber -> {
-            ProtocolConsumer<Authentication> consumer = new ProtocolConsumer<Authentication>(subscriber) {
+            ProtocolConsumer<Authentication> consumer = new ProtocolConsumer<Authentication>(subscriber, "CONNECT") {
                 @Override
                 public void accept(Message message) {
                     whenTypeOf(message)
@@ -188,7 +186,7 @@ public class ProtocolStream {
     public Completable authenticate(PasswordMessage password) {
         return Single
                 .create(subscriber -> {
-                    ProtocolConsumer<Void> consumer = new ProtocolConsumer<Void>(subscriber) {
+                    ProtocolConsumer<Void> consumer = new ProtocolConsumer<Void>(subscriber, "AUTHENTICATE") {
                         @Override
                         public void accept(Message message) {
                             whenTypeOf(message)
@@ -212,6 +210,8 @@ public class ProtocolStream {
     public Observable<Message> command(Message... messages) {
         if (messages.length == 0)
             return Observable.error(new IllegalArgumentException("No messages to send"));
+        else if (!isConnected())
+            Observable.error(new IllegalStateException("Channel is closed [" + messages[0] + "]"));
 
         return Observable.unsafeCreate(BackPressuredEmitter.<Message>create(emitter -> {
             StreamConsumer<Message> consumer = new StreamConsumer<Message>(emitter, messages[0].toString()) {
@@ -243,16 +243,13 @@ public class ProtocolStream {
                     enableAutoRead();
                 }
             };
-
-            if (!isConnected())
-                consumer.error(new IllegalStateException("Channel is closed [" + messages[0] + "]"));
-            else
-                ensureInLoop(() -> {
-                    subscribers.add(consumer);
-                    write(messages);
-                    disableAutoRead();
-                    readNext();
-                });
+            
+            ensureInLoop(() -> {
+                subscribers.add(consumer);
+                write(messages);
+                disableAutoRead();
+                readNext();
+            });
         }, this::readNext));
     }
 
@@ -307,14 +304,17 @@ public class ProtocolStream {
 
     public Completable close() {
         return Completable
-                .create(subscriber ->
-                        ctx.writeAndFlush(Terminate.INSTANCE)
-                                .addListener(closed -> {
-                                    if (closed.isSuccess())
-                                        subscriber.onCompleted();
-                                    else
-                                        subscriber.onError(closed.cause());
-                                })
+                .create(subscriber -> {
+                            closed = true;
+                            handleError(new RuntimeException("Closing connection"));
+                            ctx.writeAndFlush(Terminate.INSTANCE)
+                                    .addListener(closed -> {
+                                        if (closed.isSuccess())
+                                            subscriber.onCompleted();
+                                        else
+                                            subscriber.onError(closed.cause());
+                                    });
+                        }
                 )
                 .subscribeOn(scheduler);
     }
