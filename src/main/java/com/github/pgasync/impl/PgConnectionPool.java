@@ -195,7 +195,7 @@ public class PgConnectionPool implements ConnectionPool {
     }
 
     private void openConnectionsIfNecessary() {
-        if (currentSize >= config.poolSize() || subscribers.size() <= connections.size() || closed)
+        if (currentSize >= config.poolSize() || subscribers.size() <= availableConnections.size() || closed)
             return;
 
         int connectionsToOpen = Math.min(subscribers.size(), config.poolSize() - currentSize);
@@ -205,11 +205,12 @@ public class PgConnectionPool implements ConnectionPool {
                 .forEach(__ ->
                         new PgConnection(new ProtocolStream(eventLoopGroup, config), dataConverter)
                                 .connect(config.username(), config.password(), config.database())
+                                .observeOn(scheduler)
                                 .doOnEach(___ -> houseKeepSubscribers())
                                 .doOnSuccess(connection -> {
-                                    LOG.info("New connection created [{}/{}]", currentSize, config.poolSize());
                                     connections.add(connection);
                                     availableConnections.add(connection);
+                                    LOG.info("New connection created [{}/{}]", connections.size(), config.poolSize());
                                     serveAvailableConnections();
                                 })
                                 .doOnError(exception -> {

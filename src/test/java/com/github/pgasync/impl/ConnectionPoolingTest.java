@@ -14,6 +14,7 @@
 
 package com.github.pgasync.impl;
 
+import com.github.pgasync.Connection;
 import com.github.pgasync.ConnectionPool;
 import com.github.pgasync.ResultSet;
 import com.github.pgasync.SqlException;
@@ -30,6 +31,8 @@ import java.util.stream.IntStream;
 
 import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
 
@@ -91,6 +94,28 @@ public class ConnectionPoolingTest {
         boolean closedCorrectly = pool.close().await(5, TimeUnit.SECONDS);
 
         assertTrue(closedCorrectly);
+    }
+
+    @Test
+    public void shouldCreateConnectionsAsNeeded() {
+        ConnectionPool pool = dbr.builder.poolSize(2).build();
+
+        Connection c1 = pool.getConnection().timeout(1, TimeUnit.SECONDS).toBlocking().value();
+        Connection c2 = pool.getConnection().timeout(1, TimeUnit.SECONDS).toBlocking().value();
+
+        assert c1 != c2;
+
+        try {
+            Connection c3 = pool.getConnection().timeout(1, TimeUnit.SECONDS).toBlocking().value();
+            pool.release(c3);
+            fail("Expected to wait for a connection to be released");
+        } catch (Exception e) {
+            assertNotNull(e.getCause());
+            assertThat(e.getCause(), is(instanceOf(TimeoutException.class)));
+        } finally {
+            pool.release(c1);
+            pool.release(c2);
+        }
     }
 
     private long testTimeout(Single<ResultSet> query) {

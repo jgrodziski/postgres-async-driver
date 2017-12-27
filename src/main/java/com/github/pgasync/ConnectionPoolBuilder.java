@@ -37,9 +37,10 @@ public class ConnectionPoolBuilder {
     private final List<Converter<?>> converters = new ArrayList<>();
     private DatabaseConfigBuilder configBuilder = DatabaseConfig.builder();
     private String hostname;
-    private int port = DEFAULT_PORT;
+    private int port;
 
     public ConnectionPoolBuilder() {
+        port(DEFAULT_PORT);
         poolSize(DEFAULT_POOL_SIZE);
         connectTimeout(30, TimeUnit.SECONDS);
         poolCloseTimeout(15, TimeUnit.SECONDS);
