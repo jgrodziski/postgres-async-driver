@@ -18,11 +18,13 @@ import com.github.pgasync.DatabaseConfig.DatabaseConfigBuilder;
 import com.github.pgasync.impl.PgConnectionPool;
 import com.github.pgasync.impl.conversion.DataConverter;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.util.concurrent.DefaultThreadFactory;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -38,12 +40,14 @@ public class ConnectionPoolBuilder {
     private DatabaseConfigBuilder configBuilder = DatabaseConfig.builder();
     private String hostname;
     private int port;
+    private int threads;
 
     public ConnectionPoolBuilder() {
         port(DEFAULT_PORT);
         poolSize(DEFAULT_POOL_SIZE);
         connectTimeout(30, TimeUnit.SECONDS);
         poolCloseTimeout(15, TimeUnit.SECONDS);
+        threads(1);
     }
 
     /**
@@ -55,7 +59,8 @@ public class ConnectionPoolBuilder {
                 .build();
 
         DataConverter dataConverter = new DataConverter(converters);
-        NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup(1);
+        ThreadFactory threadFactory = new DefaultThreadFactory("PostgresDriverScheduler");
+        NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup(threads, threadFactory);
 
         return new PgConnectionPool(config, dataConverter, eventLoopGroup);
     }
@@ -117,6 +122,14 @@ public class ConnectionPoolBuilder {
 
     public ConnectionPoolBuilder poolCloseTimeout(long value, TimeUnit timeUnit) {
         configBuilder.poolCloseTimeout((int) timeUnit.toMillis(value));
+        return this;
+    }
+
+    public ConnectionPoolBuilder threads(int threads) {
+        if (threads < 1)
+            throw new IllegalArgumentException("threads value must be greater than 0");
+
+        this.threads = threads;
         return this;
     }
 }
