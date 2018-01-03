@@ -62,7 +62,7 @@ public class ProtocolStream {
         void closeStream() {
             LOG.warn("Closing channel due to premature cancellation [{}]", query);
             subscribers.remove(this);
-            closed = true;
+            dirty = true;
             ctx.channel().close();
         }
     }
@@ -135,7 +135,7 @@ public class ProtocolStream {
     private final ConcurrentMap<String, List<StreamConsumer<String>>> listeners = new ConcurrentHashMap<>();
 
     private ChannelHandlerContext ctx;
-    private boolean closed;
+    private boolean dirty;
     private Scheduler scheduler;
 
     public ProtocolStream(EventLoopGroup group, DatabaseConfig config) {
@@ -243,7 +243,7 @@ public class ProtocolStream {
                     enableAutoRead();
                 }
             };
-            
+
             ensureInLoop(() -> {
                 subscribers.add(consumer);
                 write(messages);
@@ -254,6 +254,9 @@ public class ProtocolStream {
     }
 
     public Observable<String> listen(String channel) {
+        if (!isConnected())
+            Observable.error(new IllegalStateException("Channel is closed [LISTEN]"));
+
         return Observable.unsafeCreate(BackPressuredEmitter.<String>create(emitter -> {
             StreamConsumer<String> consumer = new StreamConsumer<String>(emitter, "LISTEN") {
                 @Override
@@ -282,21 +285,18 @@ public class ProtocolStream {
                 }
             };
 
-            if (!isConnected())
-                consumer.error(new IllegalStateException("Channel is closed [LISTEN]"));
-            else
-                ensureInLoop(() -> {
-                    List<StreamConsumer<String>> consumers = listeners.getOrDefault(channel, new LinkedList<>());
-                    consumers.add(consumer);
-                    listeners.put(channel, consumers);
-                    disableAutoRead();
-                    readNext();
-                });
+            ensureInLoop(() -> {
+                List<StreamConsumer<String>> consumers = listeners.getOrDefault(channel, new LinkedList<>());
+                consumers.add(consumer);
+                listeners.put(channel, consumers);
+                disableAutoRead();
+                readNext();
+            });
         }, this::readNext));
     }
 
     public boolean isConnected() {
-        return !closed && Optional
+        return !dirty && Optional
                 .ofNullable(ctx)
                 .map(c -> c.channel().isOpen())
                 .orElse(false);
@@ -305,7 +305,7 @@ public class ProtocolStream {
     public Completable close() {
         return Completable
                 .create(subscriber -> {
-                            closed = true;
+                            dirty = true;
                             handleError(new RuntimeException("Closing connection"));
                             ctx.writeAndFlush(Terminate.INSTANCE)
                                     .addListener(closed -> {
@@ -355,6 +355,7 @@ public class ProtocolStream {
             listeners.clear();
         } else
             Optional.ofNullable(subscribers.poll()).ifPresent(s -> s.error(throwable));
+        dirty = true;
     }
 
     private SqlException toSqlException(ErrorResponse error) {
@@ -380,7 +381,7 @@ public class ProtocolStream {
         }
 
         @Override
-        public void userEventTriggered(ChannelHandlerContext context, Object evt) throws Exception {
+        public void userEventTriggered(ChannelHandlerContext context, Object evt) {
             whenTypeOf(evt).is(SslHandshakeCompletionEvent.class).then(e -> {
                 if (e.isSuccess())
                     writeStartupAndFixPipeline(context);

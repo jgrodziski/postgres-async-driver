@@ -45,7 +45,7 @@ class ProtocolHandler extends ChannelInboundHandlerAdapter {
     private final Consumer<Throwable> errorHandler;
 
     @Override
-    public void channelRead(ChannelHandlerContext context, Object msg) throws Exception {
+    public void channelRead(ChannelHandlerContext context, Object msg) {
         LOG.trace("Reading: {}", msg);
 
         whenTypeOf(msg)
@@ -55,13 +55,13 @@ class ProtocolHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelInactive(ChannelHandlerContext context) throws Exception {
+    public void channelInactive(ChannelHandlerContext context) {
         if (!subscribers.isEmpty())
             exceptionCaught(context, new IOException("Channel state changed to inactive"));
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext context, Throwable cause) throws Exception {
+    public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
         errorHandler.accept(cause);
     }
 

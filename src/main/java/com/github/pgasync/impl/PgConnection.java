@@ -45,12 +45,15 @@ import static com.nurkiewicz.typeof.TypeOf.whenTypeOf;
  * @author Jacek Sokol
  */
 public class PgConnection implements Connection {
+    private static int NEXT_CONNECTION_NUMBER = 0;
+    private final int number;
     private final ProtocolStream stream;
     private final DataConverter dataConverter;
     private long timeout = 0;
     private Completable setTimeout = Completable.complete();
 
     PgConnection(ProtocolStream stream, DataConverter dataConverter) {
+        this.number = NEXT_CONNECTION_NUMBER++;
         this.stream = stream;
         this.dataConverter = dataConverter;
     }
@@ -118,6 +121,30 @@ public class PgConnection implements Connection {
     @Override
     public boolean isConnected() {
         return stream.isConnected();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        PgConnection that = (PgConnection) o;
+
+        return number == that.number;
+    }
+
+    @Override
+    public int hashCode() {
+        return number;
+    }
+
+    @Override
+    public String toString() {
+        return "PgConnection{" +
+                "number=" + number +
+                ", timeout=" + timeout +
+                ", connected=" + stream.isConnected() +
+                '}';
     }
 
     private Observable<Message> sendCommand(String sql, Object[] params) {

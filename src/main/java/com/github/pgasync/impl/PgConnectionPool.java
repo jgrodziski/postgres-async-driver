@@ -35,7 +35,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * Pool for backend connections. Callbacks are queued and executed when pool has an available
@@ -176,10 +175,11 @@ public class PgConnectionPool implements ConnectionPool {
     public Completable release(Connection connection) {
         return Completable
                 .create(subscriber -> {
+                    LOG.trace("Releasing connection: {}", connection);
                     if (connections.contains(connection) && !availableConnections.contains(connection))
                         availableConnections.add(connection);
-                    managePool();
                     subscriber.onCompleted();
+                    managePool();
                 })
                 .subscribeOn(scheduler);
     }
@@ -210,7 +210,7 @@ public class PgConnectionPool implements ConnectionPool {
                                 .doOnSuccess(connection -> {
                                     connections.add(connection);
                                     availableConnections.add(connection);
-                                    LOG.info("New connection created [{}/{}]", connections.size(), config.poolSize());
+                                    LOG.info("New connection created: {} [{}/{}]", connection, connections.size(), config.poolSize());
                                     serveAvailableConnections();
                                 })
                                 .doOnError(exception -> {
@@ -232,8 +232,10 @@ public class PgConnectionPool implements ConnectionPool {
     }
 
     private void serveAvailableConnections() {
-        while (!subscribers.isEmpty() && !availableConnections.isEmpty() && !closed)
+        while (!subscribers.isEmpty() && !availableConnections.isEmpty() && !closed) {
+            LOG.trace("Assigning connection: {}", availableConnections.peek());
             subscribers.poll().onSuccess(availableConnections.poll());
+        }
     }
 
     private void houseKeepConnections() {
@@ -250,7 +252,7 @@ public class PgConnectionPool implements ConnectionPool {
     }
 
     private void closeConnectionQuietly(Connection connection) {
-        LOG.info("Removing dirty connection [{}/{}]", currentSize, config.poolSize());
+        LOG.info("Removing dirty connection: {} [{}/{}]", connection, currentSize, config.poolSize());
         currentSize--;
         try {
             connection.close();
@@ -343,9 +345,12 @@ public class PgConnectionPool implements ConnectionPool {
         }
     }
 
-    @RequiredArgsConstructor
     class ConnectionPoolWithTimeout implements ConnectionPool {
         private final long timeout;
+
+        ConnectionPoolWithTimeout(long timeout) {
+            this.timeout = timeout;
+        }
 
         @RequiredArgsConstructor
         class ReleaseEnforcer implements Action0 {
@@ -420,7 +425,7 @@ public class PgConnectionPool implements ConnectionPool {
 
         @Override
         public Completable release(Connection connection) {
-            return PgConnectionPool.this.release(connection.withTimeout(config.statementTimeout(), SECONDS));
+            return PgConnectionPool.this.release(connection.withTimeout(config.statementTimeout(), MILLISECONDS));
         }
 
         @Override

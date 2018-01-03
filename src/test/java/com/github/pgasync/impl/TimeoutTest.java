@@ -136,12 +136,11 @@ public class TimeoutTest {
     @Test
     public void shouldReconnectAfterTransactionRxTimeout() throws Exception {
         // given
-        Db pool1 = dbr.builder.poolSize(1).build();
-        Db pool2 = dbr.builder.poolSize(1).build();
+        Db pool1 = dbr.builder.poolSize(1).statementTimeout(0, TimeUnit.MILLISECONDS).build();
+        Db pool2 = dbr.builder.poolSize(1).statementTimeout(0, TimeUnit.MILLISECONDS).build();
 
         dbr.query("DROP TABLE IF EXISTS tx_timeout_test");
         dbr.query("CREATE TABLE tx_timeout_test(ID INT PRIMARY KEY)");
-
 
         Function<Integer, Completable> insertRecord = n -> pool2
                 .begin()
@@ -165,9 +164,9 @@ public class TimeoutTest {
         // try to use that table in other tx
         try {
             insertRecord.apply(321).await();
-        } catch (Throwable t) {
+        } catch (RuntimeException e) {
             // ensure timeout is the cause
-            assertThat(t.getCause(), is(instanceOf(TimeoutException.class)));
+            assertThat(e.getCause(), is(instanceOf(TimeoutException.class)));
         } finally {
             // release lock
             tx.rollback().await();
@@ -190,7 +189,6 @@ public class TimeoutTest {
         dbr.query("DROP TABLE IF EXISTS tx_timeout_test");
         dbr.query("CREATE TABLE tx_timeout_test(ID INT PRIMARY KEY)");
 
-
         Function<Integer, Completable> insertRecord = n -> pool2
                 .begin()
                 .flatMapCompletable(t ->
@@ -211,10 +209,9 @@ public class TimeoutTest {
         // try to use that table in other tx
         try {
             insertRecord.apply(321).await();
-        } catch (Throwable t) {
-            assertThat(t, is(instanceOf(SqlException.class)));
+        } catch (SqlException e) {
             // ensure timeout is the cause
-            assertEquals("ERROR: SQLSTATE=57014, MESSAGE=canceling statement due to statement timeout", t.getMessage());
+            assertEquals("ERROR: SQLSTATE=57014, MESSAGE=canceling statement due to statement timeout", e.getMessage());
         } finally {
             // release lock
             tx.rollback().await();
