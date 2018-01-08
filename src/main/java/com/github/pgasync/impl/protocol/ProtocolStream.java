@@ -211,7 +211,7 @@ public class ProtocolStream {
         if (messages.length == 0)
             return Observable.error(new IllegalArgumentException("No messages to send"));
         else if (!isConnected())
-            Observable.error(new IllegalStateException("Channel is closed [" + messages[0] + "]"));
+            return Observable.error(new IllegalStateException("Channel is closed [" + messages[0] + "]"));
 
         return Observable.unsafeCreate(BackPressuredEmitter.<Message>create(emitter -> {
             StreamConsumer<Message> consumer = new StreamConsumer<Message>(emitter, messages[0].toString()) {
@@ -255,7 +255,7 @@ public class ProtocolStream {
 
     public Observable<String> listen(String channel) {
         if (!isConnected())
-            Observable.error(new IllegalStateException("Channel is closed [LISTEN]"));
+            return Observable.error(new IllegalStateException("Channel is closed [LISTEN]"));
 
         return Observable.unsafeCreate(BackPressuredEmitter.<String>create(emitter -> {
             StreamConsumer<String> consumer = new StreamConsumer<String>(emitter, "LISTEN") {
