@@ -34,8 +34,8 @@ import static org.junit.Assert.assertTrue;
  */
 public class TransactionTest {
 
-    final Consumer<Throwable> err = Throwable::printStackTrace;
-    final Consumer<ResultSet> fail = result -> new AssertionError("Failure expected").printStackTrace();
+    private final Consumer<Throwable> err = Throwable::printStackTrace;
+    private final Consumer<ResultSet> fail = result -> new AssertionError("Failure expected").printStackTrace();
 
     @ClassRule
     public static DatabaseRule dbr = new DatabaseRule();
@@ -81,7 +81,7 @@ public class TransactionTest {
     }
 
     @Test
-    public void shouldCommitParametrizedInsertInTransaction() throws Exception {
+    public void shouldCommitParametrizedInsertInTransaction() {
         // Ref: https://github.com/alaisi/postgres-async-driver/issues/34
         long id = dbr.db().begin().flatMap(txn ->
             txn.queryRows("INSERT INTO TX_TEST (ID) VALUES ($1) RETURNING ID", "35").last().flatMapSingle(row -> {

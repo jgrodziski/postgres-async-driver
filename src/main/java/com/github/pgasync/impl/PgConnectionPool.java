@@ -21,12 +21,11 @@ import io.netty.channel.EventLoopGroup;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import rx.Completable;
+import rx.*;
 import rx.Observable;
-import rx.Single;
-import rx.SingleSubscriber;
 import rx.functions.Action0;
 import rx.schedulers.Schedulers;
+import rx.subscriptions.Subscriptions;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -107,7 +106,7 @@ public class PgConnectionPool implements ConnectionPool {
 
     private Completable closeEventLoop() {
         return Completable.create(subscriber -> {
-            LOG.debug("Closing event loop");
+            LOG.debug("Closing event loop group");
             eventLoopGroup
                     .shutdownGracefully()
                     .addListener(f -> {
@@ -123,7 +122,7 @@ public class PgConnectionPool implements ConnectionPool {
         AtomicBoolean done = new AtomicBoolean();
         return Observable
                 .interval(100, 100, MILLISECONDS)
-                .doOnSubscribe(() -> LOG.debug("Waiting for connections to be released: {}", connections.size()))
+                .doOnSubscribe(() -> LOG.debug("Waiting for connections to be released: {}", connections))
                 .doOnNext(__ -> {
                     while (currentSize > 0) {
                         Connection connection = availableConnections.poll();
@@ -174,11 +173,10 @@ public class PgConnectionPool implements ConnectionPool {
     @Override
     public Completable release(Connection connection) {
         return Completable
-                .create(subscriber -> {
+                .fromAction(() -> {
                     LOG.trace("Releasing connection: {}", connection);
                     if (connections.contains(connection) && !availableConnections.contains(connection))
                         availableConnections.add(connection);
-                    subscriber.onCompleted();
                     managePool();
                 })
                 .subscribeOn(scheduler);
@@ -193,6 +191,7 @@ public class PgConnectionPool implements ConnectionPool {
             managePool();
         }
     }
+
 
     private void openConnectionsIfNecessary() {
         if (currentSize >= config.poolSize() || subscribers.size() <= availableConnections.size() || closed)
@@ -308,6 +307,10 @@ public class PgConnectionPool implements ConnectionPool {
                     .doOnUnsubscribe(() -> {
                         if (!completed.get())
                             releaseConnectionImmediately();
+                    })
+                    .doAfterTerminate(() -> {
+                        if (!completed.get())
+                            releaseConnectionImmediately();
                     });
         }
 
@@ -324,6 +327,10 @@ public class PgConnectionPool implements ConnectionPool {
                     .doOnSuccess(__ -> completed.set(true))
                     .onErrorResumeNext(exception -> releaseConnection().andThen(Single.error(exception)))
                     .doOnUnsubscribe(() -> {
+                        if (!completed.get())
+                            releaseConnectionImmediately();
+                    })
+                    .doAfterTerminate(() -> {
                         if (!completed.get())
                             releaseConnectionImmediately();
                     });
@@ -361,7 +368,7 @@ public class PgConnectionPool implements ConnectionPool {
             public void call() {
                 if (!released) {
                     released = true;
-                    releaseIfNotPipelining(connection);
+                    release(connection).subscribe();
                 }
             }
         }
@@ -385,26 +392,41 @@ public class PgConnectionPool implements ConnectionPool {
         @Override
         public Observable<Row> queryRows(String sql, Object... params) {
             return getConnection()
-                    .doOnSuccess(this::releaseIfPipelining)
                     .flatMapObservable(connection -> {
                         ReleaseEnforcer releaseEnforcer = new ReleaseEnforcer(connection);
-                        return connection
-                                .queryRows(sql, params)
-                                .doOnTerminate(releaseEnforcer)
-                                .doOnUnsubscribe(releaseEnforcer);
+
+                        return Observable.<Row>unsafeCreate(subscriber -> {
+                            Subscription subscription = connection
+                                    .queryRows(sql, params)
+                                    .subscribe(subscriber);
+
+                            Subscription onUnsubscribe = Subscriptions.create(() -> {
+                                subscription.unsubscribe();
+                                releaseEnforcer.call();
+                            });
+
+                            subscriber.add(onUnsubscribe);
+                        }).doAfterTerminate(releaseEnforcer);
                     });
         }
 
         @Override
         public Single<ResultSet> querySet(String sql, Object... params) {
             return getConnection()
-                    .doOnSuccess(this::releaseIfPipelining)
                     .flatMap(connection -> {
                         ReleaseEnforcer releaseEnforcer = new ReleaseEnforcer(connection);
-                        return connection
-                                .querySet(sql, params)
-                                .doAfterTerminate(releaseEnforcer)
-                                .doOnUnsubscribe(releaseEnforcer);
+                        return Single.<ResultSet>create(subscriber -> {
+                            Subscription subscription = connection
+                                    .querySet(sql, params)
+                                    .subscribe(subscriber);
+
+                            Subscription onUnsubscribe = Subscriptions.create(() -> {
+                                subscription.unsubscribe();
+                                releaseEnforcer.call();
+                            });
+
+                            subscriber.add(onUnsubscribe);
+                        }).doAfterTerminate(releaseEnforcer);
                     });
         }
 
@@ -431,16 +453,6 @@ public class PgConnectionPool implements ConnectionPool {
         @Override
         public Completable close() {
             return PgConnectionPool.this.close();
-        }
-
-        private void releaseIfPipelining(Connection connection) {
-            if (config.pipeline())
-                release(connection).subscribe();
-        }
-
-        private void releaseIfNotPipelining(Connection connection) {
-            if (!config.pipeline())
-                release(connection).subscribe();
         }
     }
 }

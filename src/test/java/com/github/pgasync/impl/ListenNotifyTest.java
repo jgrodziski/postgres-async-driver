@@ -13,9 +13,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
+import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.*;
 
@@ -23,7 +22,6 @@ import static org.junit.Assert.*;
  * @author Antti Laisi
  */
 public class ListenNotifyTest {
-
     @ClassRule
     public static DatabaseRule dbr = new DatabaseRule(DatabaseRule.createPoolBuilder(5));
 
@@ -51,34 +49,38 @@ public class ListenNotifyTest {
     }
 
     @Test
-    public void shouldRespectBackPressureWhileListening() throws Exception {
+    public void shouldRespectBackPressureWhileListening() {
         final int N = 500;
         List<String> collectedNotifications = new LinkedList<>();
         CountDownLatch latch = new CountDownLatch(N);
 
-        Subscription subscription = dbr.pool.listen("test")
-                .observeOn(Schedulers.newThread())
-                .map(s -> {
-                    try {
-                        Thread.sleep(10);
-                        collectedNotifications.add(s);
-                        latch.countDown();
-                    } catch (InterruptedException ignored) {
-                    }
-                    return s;
-                })
-                .subscribe();
+        dbr.withConnection(connection -> {
+            Subscription subscription = connection
+                    .listen("test")
+                    .onBackpressureLatest()
+                    .observeOn(Schedulers.newThread())
+                    .map(s -> {
+                        try {
+                            Thread.sleep(10);
+                            collectedNotifications.add(s);
+                            latch.countDown();
+                        } catch (InterruptedException ignored) {
+                        }
+                        return s;
+                    })
+                    .subscribe();
 
-        Observable.range(0, N)
-                .concatMap(n -> dbr.pool.querySet("notify test, '" + n + "'").toObservable())
-                .toCompletable()
-                .await();
+            Observable.range(1, N)
+                    .concatMap(n -> connection.querySet("notify test, '" + n + "'").toObservable())
+                    .toCompletable()
+                    .await();
 
-        latch.await(10, TimeUnit.SECONDS);
+            latch.await(10, TimeUnit.SECONDS);
 
-        subscription.unsubscribe();
+            subscription.unsubscribe();
 
-        List<String> expected = IntStream.range(0, N).mapToObj(String::valueOf).collect(Collectors.toList());
-        assertThat(collectedNotifications, is(expected));
+            assertThat(collectedNotifications.size(), lessThan(N));
+            assertThat(collectedNotifications.get(collectedNotifications.size() - 1), is(String.valueOf(N)));
+        });
     }
 }

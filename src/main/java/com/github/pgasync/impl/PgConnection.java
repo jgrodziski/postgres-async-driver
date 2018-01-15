@@ -26,6 +26,7 @@ import lombok.experimental.Accessors;
 import rx.Completable;
 import rx.Observable;
 import rx.Single;
+import rx.Subscriber;
 import rx.functions.Action0;
 import rx.functions.Func2;
 
@@ -88,7 +89,8 @@ public class PgConnection implements Connection {
     @Override
     public Observable<Row> queryRows(String sql, Object... params) {
         ResultBuilder resultBuilder = new ResultBuilder(dataConverter);
-        return sendCommand(sql, params).flatMap(resultBuilder::handle);
+        return sendCommand(sql, params)
+                .lift(resultBuilder);
     }
 
     @Override
@@ -100,7 +102,7 @@ public class PgConnection implements Connection {
         };
 
         return sendCommand(sql, params)
-                .flatMap(resultBuilder::handle)
+                .lift(resultBuilder)
                 .reduce(new ArrayList<>(), reducer)
                 .<ResultSet>map(rows -> PgResultSet.create(rows, resultBuilder.columns(), resultBuilder.updated()))
                 .last()
@@ -174,7 +176,7 @@ public class PgConnection implements Connection {
 
     @Getter
     @Accessors(fluent = true)
-    static class ResultBuilder {
+    static class ResultBuilder implements Observable.Operator<Row, Message> {
         private final DataConverter dataConverter;
 
         private Map<String, PgColumn> columns;
@@ -184,22 +186,27 @@ public class PgConnection implements Connection {
             this.dataConverter = dataConverter;
         }
 
-        Observable<Row> handle(Message message) {
-            return whenTypeOf(message)
-                    .is(DataRow.class).thenReturn(dataRow ->
-                            Observable.<Row>just(
-                                    PgRow.create(dataRow, columns, dataConverter)
-                            )
-                    )
-                    .is(RowDescription.class).thenReturn(rowDescription -> {
-                        columns = readColumns(rowDescription.columns());
-                        return Observable.empty();
-                    })
-                    .is(CommandComplete.class).thenReturn(commandComplete -> {
-                        updated = commandComplete.updatedRows();
-                        return Observable.empty();
-                    })
-                    .get();
+        @Override
+        public Subscriber<? super Message> call(Subscriber<? super Row> subscriber) {
+            return new Subscriber<Message>(subscriber) {
+                @Override
+                public void onCompleted() {
+                    subscriber.onCompleted();
+                }
+
+                @Override
+                public void onError(Throwable e) {
+                    subscriber.onError(e);
+                }
+
+                @Override
+                public void onNext(Message o) {
+                    whenTypeOf(o)
+                            .is(DataRow.class).then(dataRow -> subscriber.onNext(PgRow.create(dataRow, columns, dataConverter)))
+                            .is(RowDescription.class).then(rowDescription -> columns = readColumns(rowDescription.columns()))
+                            .is(CommandComplete.class).then(commandComplete -> updated = commandComplete.updatedRows());
+                }
+            };
         }
 
         private Map<String, PgColumn> readColumns(RowDescription.ColumnDescription[] descriptions) {

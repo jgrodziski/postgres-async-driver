@@ -69,7 +69,7 @@ public class ConnectionPoolingTest {
     }
 
     @Test
-    public void shouldResetTimeoutToDefaultValueWhenConnectionIsReturnedToPool() throws Exception {
+    public void shouldResetTimeoutToDefaultValueWhenConnectionIsReturnedToPool() {
         ConnectionPool pool = dbr.builder.statementTimeout(5, TimeUnit.SECONDS).poolSize(1).build();
 
         long timeSpent = testTimeout(
@@ -86,7 +86,7 @@ public class ConnectionPoolingTest {
     }
 
     @Test
-    public void shouldForciblyClosePool() throws Exception {
+    public void shouldForciblyClosePool() {
         ConnectionPool pool = dbr.builder.poolSize(1).poolCloseTimeout(500, TimeUnit.MILLISECONDS).build();
 
         pool.getConnection().toBlocking().value();
@@ -107,14 +107,14 @@ public class ConnectionPoolingTest {
 
         try {
             Connection c3 = pool.getConnection().timeout(1, TimeUnit.SECONDS).toBlocking().value();
-            pool.release(c3);
+            pool.release(c3).await();
             fail("Expected to wait for a connection to be released");
         } catch (Exception e) {
             assertNotNull(e.getCause());
             assertThat(e.getCause(), is(instanceOf(TimeoutException.class)));
         } finally {
-            pool.release(c1);
-            pool.release(c2);
+            pool.release(c1).await();
+            pool.release(c2).await();
         }
     }
 

@@ -1,34 +1,37 @@
 package com.github.pgasync.impl;
 
-import static java.lang.System.getenv;
-import static java.lang.System.out;
-import static ru.yandex.qatools.embed.postgresql.distribution.Version.V9_6_2;
-
-import com.github.pgasync.ConnectionPool;
-import com.github.pgasync.ConnectionPoolBuilder;
-import com.github.pgasync.Db;
-import com.github.pgasync.ResultSet;
+import com.github.pgasync.*;
 import org.junit.rules.ExternalResource;
-import rx.Observable;
-
-import java.io.IOException;
-import java.util.AbstractMap.SimpleImmutableEntry;
-import java.util.List;
-import java.util.Map.Entry;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-
 import ru.yandex.qatools.embed.postgresql.PostgresExecutable;
 import ru.yandex.qatools.embed.postgresql.PostgresProcess;
 import ru.yandex.qatools.embed.postgresql.PostgresStarter;
 import ru.yandex.qatools.embed.postgresql.config.AbstractPostgresConfig;
 import ru.yandex.qatools.embed.postgresql.config.PostgresConfig;
+import rx.Completable;
+import rx.Observable;
+import rx.schedulers.Schedulers;
+
+import java.io.IOException;
+import java.util.AbstractMap.SimpleImmutableEntry;
+import java.util.List;
+import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+import static java.lang.System.getenv;
+import static java.lang.System.out;
+import static ru.yandex.qatools.embed.postgresql.distribution.Version.V9_6_2;
 
 /**
  * @author Antti Laisi
  */
 class DatabaseRule extends ExternalResource {
+    interface CheckedConsumer<T> {
+        void accept(T t) throws Exception;
+    }
+
     private static PostgresProcess process;
     final ConnectionPoolBuilder builder;
     ConnectionPool pool;
@@ -39,23 +42,18 @@ class DatabaseRule extends ExternalResource {
 
     DatabaseRule(ConnectionPoolBuilder builder) {
         this.builder = builder;
-        if (builder instanceof EmbeddedConnectionPoolBuilder)
-        {
-            if (process == null)
-            {
-                try
-                {
+        if (builder instanceof EmbeddedConnectionPoolBuilder) {
+            if (process == null) {
+                try {
                     PostgresStarter<PostgresExecutable, PostgresProcess> runtime = PostgresStarter.getDefaultInstance();
                     PostgresConfig config = new PostgresConfig(V9_6_2, new AbstractPostgresConfig.Net(),
-                        new AbstractPostgresConfig.Storage("async-pg"), new AbstractPostgresConfig.Timeout(),
-                        new AbstractPostgresConfig.Credentials("async-pg", "async-pg"));
+                            new AbstractPostgresConfig.Storage("async-pg"), new AbstractPostgresConfig.Timeout(),
+                            new AbstractPostgresConfig.Credentials("async-pg", "async-pg"));
                     PostgresExecutable exec = runtime.prepare(config);
                     process = exec.start();
 
                     out.printf("Started postgres to %s:%d%n", process.getConfig().net().host(), process.getConfig().net().port());
-                }
-                catch (IOException e)
-                {
+                } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
             }
@@ -67,43 +65,56 @@ class DatabaseRule extends ExternalResource {
 
     @Override
     protected void before() {
-        if(pool == null) {
-            pool = builder.build();
-        }
+        pool = Optional
+                .ofNullable(pool)
+                .orElseGet(builder::build);
     }
 
     @Override
     protected void after() {
-        if(pool != null) {
-            try {
-                pool.close().await();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
+        Optional.ofNullable(pool)
+                .map(Db::close)
+                .ifPresent(Completable::await);
     }
 
     ResultSet query(String sql) {
         return block(db().querySet(sql, (Object[]) null).toObservable());
     }
+
     @SuppressWarnings("rawtypes")
     ResultSet query(String sql, List/*<Object>*/ params) {
         return block(db().querySet(sql, params.toArray()).toObservable());
     }
 
+    void withConnection(CheckedConsumer<Connection> action) {
+        pool.getConnection()
+                .observeOn(Schedulers.computation())
+                .flatMapCompletable(c -> {
+                    try {
+                        action.accept(c);
+                        return Completable.complete();
+                    } catch (Throwable t) {
+                        return Completable.error(t);
+                    } finally {
+                        pool.release(c).await();
+                    }
+                })
+                .await();
+    }
+
     private <T> T block(Observable<T> observable) {
-        BlockingQueue<Entry<T,Throwable>> result = new ArrayBlockingQueue<>(1);
+        BlockingQueue<Entry<T, Throwable>> result = new ArrayBlockingQueue<>(1);
         observable.single().subscribe(
                 item -> result.add(new SimpleImmutableEntry<>(item, null)),
                 exception -> result.add(new SimpleImmutableEntry<>(null, exception)));
         try {
 
-            Entry<T,Throwable> entry = result.poll(5, TimeUnit.SECONDS);
-            if(entry == null) {
+            Entry<T, Throwable> entry = result.poll(5, TimeUnit.SECONDS);
+            if (entry == null) {
                 throw new RuntimeException("Timed out waiting for result");
             }
             Throwable exception = entry.getValue();
-            if(exception != null) {
+            if (exception != null) {
                 throw exception instanceof RuntimeException
                         ? (RuntimeException) exception
                         : new RuntimeException(exception);

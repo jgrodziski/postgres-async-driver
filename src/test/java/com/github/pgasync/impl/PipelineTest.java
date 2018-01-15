@@ -14,10 +14,7 @@
 
 package com.github.pgasync.impl;
 
-import com.github.pgasync.Connection;
-import com.github.pgasync.ConnectionPool;
 import com.github.pgasync.ResultSet;
-import org.junit.After;
 import org.junit.ClassRule;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -26,7 +23,6 @@ import java.util.Deque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -45,74 +41,34 @@ public class PipelineTest {
     @ClassRule
     public static DatabaseRule dbr = new DatabaseRule();
 
-    final Consumer<Throwable> err = t -> { throw new AssertionError("failed", t); };
-
-    Connection c;
-    ConnectionPool pool;
-
-    @After
-    public void closeConnection() throws Exception {
-        if (c != null) {
-            pool.release(c).await();
-        }
-        if (pool != null) {
-            pool.close().await();
-        }
-    }
-
-    private Connection getConnection(boolean pipeline) throws InterruptedException {
-        pool = dbr.builder.pipeline(pipeline).build();
-        return c = pool.getConnection().toBlocking().value();
-    }
+    private final Consumer<Throwable> error = t -> {
+        throw new AssertionError("failed", t);
+    };
 
     @Test
-    public void connectionPipelinesQueries() throws InterruptedException {
-        pool = dbr.builder.pipeline(true).build();
+    public void connectionPipelinesQueries() {
+        dbr.withConnection(c -> {
+            int count = 5;
+            double sleep = 0.5;
+            Deque<Long> results = new LinkedBlockingDeque<>();
+            long startWrite = currentTimeMillis();
+            for (int i = 0; i < count; ++i) {
+                c.query("select " + i + ", pg_sleep(" + sleep + ")", r -> results.add(currentTimeMillis()), error);
+            }
+            long writeTime = currentTimeMillis() - startWrite;
 
-        int count = 5;
-        double sleep = 0.5;
-        Deque<Long> results = new LinkedBlockingDeque<>();
-        long startWrite = currentTimeMillis();
-        for (int i = 0; i < count; ++i) {
-            pool.query("select " + i + ", pg_sleep(" + sleep + ")", r -> results.add(currentTimeMillis()), err);
-        }
-        long writeTime = currentTimeMillis() - startWrite;
+            long remoteWaitTimeSeconds = (long) (sleep * count);
+            SECONDS.sleep(1 + remoteWaitTimeSeconds);
+            long readTime = results.getLast() - results.getFirst();
 
-        long remoteWaitTimeSeconds = (long) (sleep * count);
-        SECONDS.sleep(1 + remoteWaitTimeSeconds);
-        long readTime = results.getLast() - results.getFirst();
-
-        assertThat(results.size(), is(count));
-        assertThat(MILLISECONDS.toSeconds(writeTime), is(0L));
-        assertThat(MILLISECONDS.toSeconds(readTime + 999) >= remoteWaitTimeSeconds, is(true));
-    }
-
-    @Test
-    public void connectionPoolPipelinesQueries() throws InterruptedException {
-        Connection c = getConnection(true);
-
-        int count = 5;
-        double sleep = 0.5;
-        Deque<Long> results = new LinkedBlockingDeque<>();
-        long startWrite = currentTimeMillis();
-        for (int i = 0; i < count; ++i) {
-            c.query("select " + i + ", pg_sleep(" + sleep + ")", r -> results.add(currentTimeMillis()), err);
-        }
-        long writeTime = currentTimeMillis() - startWrite;
-
-        long remoteWaitTimeSeconds = (long) (sleep * count);
-        SECONDS.sleep(1 + remoteWaitTimeSeconds);
-        long readTime = results.getLast() - results.getFirst();
-
-        assertThat(results.size(), is(count));
-        assertThat(MILLISECONDS.toSeconds(writeTime), is(0L));
-        assertThat(MILLISECONDS.toSeconds(readTime + 999) >= remoteWaitTimeSeconds, is(true));
+            assertThat(results.size(), is(count));
+            assertThat(MILLISECONDS.toSeconds(writeTime), is(0L));
+            assertThat(MILLISECONDS.toSeconds(readTime + 999) >= remoteWaitTimeSeconds, is(true));
+        });
     }
 
     @Test
     public void connectionPoolPipelinesQueriesWithinTransaction() throws InterruptedException {
-        pool = dbr.builder.pipeline(true).build();
-
         int count = 5;
         double sleep = 0.5;
         Deque<Long> results = new LinkedBlockingDeque<>();
@@ -120,13 +76,13 @@ public class PipelineTest {
 
         CountDownLatch sync = new CountDownLatch(1);
         long startWrite = currentTimeMillis();
-        pool.begin(t -> {
+        dbr.pool.begin(t -> {
             for (int i = 0; i < count; ++i) {
-                t.query("select " + i + ", pg_sleep(" + sleep + ")", r -> results.add(currentTimeMillis()), err);
+                t.query("select " + i + ", pg_sleep(" + sleep + ")", r -> results.add(currentTimeMillis()), error);
             }
-            t.commit(sync::countDown, err);
+            t.commit(sync::countDown, error);
             writeTime.set(currentTimeMillis() - startWrite);
-        } , err);
+        }, error);
         sync.await(3, SECONDS);
 
         long remoteWaitTimeSeconds = (long) (sleep * count);
@@ -138,17 +94,17 @@ public class PipelineTest {
         assertThat(MILLISECONDS.toSeconds(readTime + 999) >= remoteWaitTimeSeconds, is(true));
     }
 
-    @Test @Ignore("TODO: Setup pipeline queue limits")
-    public void disabledConnectionPipeliningThrowsErrorWhenPipeliningIsAttempted() throws Exception {
-        Connection c = getConnection(false);
-
-        BlockingQueue<ResultSet> rs = new LinkedBlockingDeque<>();
-        BlockingQueue<Throwable> err = new LinkedBlockingDeque<>();
-        for (int i = 0; i < 2; ++i) {
-            c.query("select " + i + ", pg_sleep(0.5)", rs::add, err::add);
-        }
-        assertThat(err.take().getMessage(), containsString("Pipelining not enabled"));
-        assertThat(rs.take(), isA(ResultSet.class));
+    @Test
+    @Ignore("TODO: Setup pipeline queue limits")
+    public void disabledConnectionPipeliningThrowsErrorWhenPipeliningIsAttempted() {
+        dbr.withConnection(c -> {
+            BlockingQueue<ResultSet> rs = new LinkedBlockingDeque<>();
+            BlockingQueue<Throwable> err = new LinkedBlockingDeque<>();
+            for (int i = 0; i < 2; ++i) {
+                c.query("select " + i + ", pg_sleep(0.5)", rs::add, err::add);
+            }
+            assertThat(err.take().getMessage(), containsString("Pipelining not enabled"));
+            assertThat(rs.take(), isA(ResultSet.class));
+        });
     }
-
 }

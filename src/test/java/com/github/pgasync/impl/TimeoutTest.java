@@ -36,7 +36,7 @@ public class TimeoutTest {
     }
 
     @Test
-    public void shouldReportErrorOnReadRxTimeout() throws Exception {
+    public void shouldReportErrorOnReadRxTimeout() {
         //given
         Db db = dbr.db();
 
@@ -89,7 +89,7 @@ public class TimeoutTest {
     }
 
     @Test
-    public void shouldReconnectAfterFailure() throws Exception {
+    public void shouldReconnectAfterFailure() {
         //given
         Db db = dbr.db();
 
@@ -112,7 +112,7 @@ public class TimeoutTest {
     }
 
     @Test
-    public void shouldTimeoutLongRunningQuery() throws Exception {
+    public void shouldTimeoutLongRunningQuery() {
         //given
         Db db = dbr.db();
 
@@ -134,7 +134,7 @@ public class TimeoutTest {
     }
 
     @Test
-    public void shouldReconnectAfterTransactionRxTimeout() throws Exception {
+    public void shouldReconnectAfterTransactionRxTimeout() {
         // given
         Db pool1 = dbr.builder.poolSize(1).statementTimeout(0, TimeUnit.MILLISECONDS).build();
         Db pool2 = dbr.builder.poolSize(1).statementTimeout(0, TimeUnit.MILLISECONDS).build();
@@ -181,7 +181,7 @@ public class TimeoutTest {
     }
 
     @Test
-    public void shouldReconnectAfterTransactionPgTimeout() throws Exception {
+    public void shouldReconnectAfterTransactionPgTimeout() {
         // given
         Db pool1 = dbr.builder.poolSize(1).statementTimeout(1, TimeUnit.SECONDS).build();
         Db pool2 = dbr.builder.poolSize(1).statementTimeout(1, TimeUnit.SECONDS).build();

@@ -36,6 +36,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -60,10 +61,15 @@ public class ProtocolStream {
         abstract void error(Throwable throwable);
 
         void closeStream() {
-            LOG.warn("Closing channel due to premature cancellation [{}]", query);
-            subscribers.remove(this);
-            dirty = true;
-            ctx.channel().close();
+            Completable
+                    .fromAction(() -> {
+                        LOG.warn("Closing channel due to premature cancellation [{}]", query);
+                        subscribers.remove(this);
+                        dirty = true;
+                        ctx.channel().close();
+                    })
+                    .subscribeOn(scheduler)
+                    .await(1, TimeUnit.SECONDS);
         }
     }
 
@@ -171,13 +177,13 @@ public class ProtocolStream {
             subscribers.add(consumer);
 
             InboundChannelInitializer inboundChannelInitializer = new InboundChannelInitializer(startup);
-            ProtocolHandler protocolHandler = new ProtocolHandler(subscribers, listeners, this::handleError);
+            MessageHandler messageHandler = new MessageHandler(subscribers, listeners, this::handleError);
 
             new Bootstrap()
                     .group(group)
                     .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, config.connectTimeout())
                     .channel(NioSocketChannel.class)
-                    .handler(new ProtocolInitializer(config, inboundChannelInitializer, protocolHandler))
+                    .handler(new ProtocolInitializer(config, inboundChannelInitializer, messageHandler))
                     .connect(config.address())
                     .addListener(onError);
         });
@@ -243,14 +249,11 @@ public class ProtocolStream {
                     enableAutoRead();
                 }
             };
-
-            ensureInLoop(() -> {
-                subscribers.add(consumer);
-                write(messages);
-                disableAutoRead();
-                readNext();
-            });
-        }, this::readNext));
+            subscribers.add(consumer);
+            write(messages);
+            disableAutoRead();
+            readNext();
+        }, this::readNext)).subscribeOn(scheduler);
     }
 
     public Observable<String> listen(String channel) {
@@ -285,14 +288,12 @@ public class ProtocolStream {
                 }
             };
 
-            ensureInLoop(() -> {
-                List<StreamConsumer<String>> consumers = listeners.getOrDefault(channel, new LinkedList<>());
-                consumers.add(consumer);
-                listeners.put(channel, consumers);
-                disableAutoRead();
-                readNext();
-            });
-        }, this::readNext));
+            List<StreamConsumer<String>> consumers = listeners.getOrDefault(channel, new LinkedList<>());
+            consumers.add(consumer);
+            listeners.put(channel, consumers);
+            disableAutoRead();
+            readNext();
+        }, this::readNext)).subscribeOn(scheduler);
     }
 
     public boolean isConnected() {
@@ -317,13 +318,6 @@ public class ProtocolStream {
                         }
                 )
                 .subscribeOn(scheduler);
-    }
-
-    private void ensureInLoop(Runnable runnable) {
-        if (ctx.executor().inEventLoop())
-            runnable.run();
-        else
-            ctx.executor().submit(runnable);
     }
 
     private void write(Message... messages) {

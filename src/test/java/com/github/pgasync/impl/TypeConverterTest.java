@@ -60,7 +60,7 @@ public class TypeConverterTest {
     }
 
     @Test
-    public void shouldConvertCharToString() throws Exception {
+    public void shouldConvertCharToString() {
         assertEquals("test ", dbr.query("select 'test'::CHAR(5)").row(0).getString(0));
     }
 
@@ -70,7 +70,7 @@ public class TypeConverterTest {
     }
 
     @Test
-    public void shouldConvertNullToLong() throws Exception {
+    public void shouldConvertNullToLong() {
         assertNull(dbr.query("select NULL").row(0).getLong(0));
     }
 
@@ -216,14 +216,14 @@ public class TypeConverterTest {
 
     @Test
     public void shouldConvertByteAToBytesWithName() {
-        assertArrayEquals(new byte[]{0x41, 0x41}, dbr.query("select $1::BYTEA as bytes", asList("AA")).row(0)
+        assertArrayEquals(new byte[]{0x41, 0x41}, dbr.query("select $1::BYTEA as bytes", singletonList("AA")).row(0)
                 .getBytes("bytes"));
     }
 
     @Test
     public void shouldConvertBoolean() {
-        assertTrue(dbr.query("select $1::BOOL as b", asList(true)).row(0).getBoolean("b"));
-        assertFalse(dbr.query("select $1::BOOL as b", asList(false)).row(0).getBoolean(0));
+        assertTrue(dbr.query("select $1::BOOL as b", singletonList(true)).row(0).getBoolean("b"));
+        assertFalse(dbr.query("select $1::BOOL as b", singletonList(false)).row(0).getBoolean(0));
         assertNull(dbr.query("select $1::BOOL as b", asList(new Object[]{null})).row(0).getBoolean("b"));
         assertArrayEquals(new Boolean[]{ true, false}, dbr.query("select '{true,false}'::BOOL[]").row(0).getArray(0, Boolean[].class));
     }

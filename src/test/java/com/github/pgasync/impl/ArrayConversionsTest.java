@@ -36,7 +36,7 @@ public class ArrayConversionsTest {
         dbr.query("DELETE FROM CA_TEST");
     }
 
-    public Row getRow() {
+    private Row getRow() {
         return dbr.query("SELECT * FROM CA_TEST").row(0);
     }
 
@@ -63,7 +63,7 @@ public class ArrayConversionsTest {
         dbr.query("INSERT INTO CA_TEST (LONGA) VALUES ('{-1, null, 1, 2, 3}')");
 
         assertArrayEquals(
-            new Long[]{-1l, null, 1l, 2l, 3l},
+            new Long[]{-1L, null, 1L, 2L, 3L},
             getRow().getArray("LONGA", Long[].class));
     }
 

@@ -79,7 +79,7 @@ public class QueryResultTest {
     }
 
     @Test
-    public void shouldStreamResultRows() throws Exception {
+    public void shouldStreamResultRows() {
         List<Integer> series = dbr.db().queryRows("select generate_series(1, 5)")
                 .map(row -> row.getInt(0))
                 .toList()

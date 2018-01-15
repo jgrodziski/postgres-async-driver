@@ -37,8 +37,8 @@ import static com.nurkiewicz.typeof.TypeOf.whenTypeOf;
  * @author Jacek Sokol
  */
 @AllArgsConstructor
-class ProtocolHandler extends ChannelInboundHandlerAdapter {
-    private final Logger LOG = LoggerFactory.getLogger(ProtocolHandler.class);
+class MessageHandler extends ChannelInboundHandlerAdapter {
+    private final Logger LOG = LoggerFactory.getLogger(MessageHandler.class);
 
     private final Queue<ProtocolStream.PgConsumer> subscribers;
     private final Map<String, List<ProtocolStream.StreamConsumer<String>>> listeners;
@@ -56,7 +56,7 @@ class ProtocolHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelInactive(ChannelHandlerContext context) {
-        if (!subscribers.isEmpty())
+        if (!subscribers.isEmpty() || !listeners.isEmpty())
             exceptionCaught(context, new IOException("Channel state changed to inactive"));
     }
 
@@ -66,7 +66,7 @@ class ProtocolHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void publishNotification(NotificationResponse notification) {
-        Optional.of(listeners.get(notification.channel()))
+        Optional.ofNullable(listeners.get(notification.channel()))
                 .ifPresent(consumers -> consumers.forEach(c -> c.accept(notification)));
     }
 }

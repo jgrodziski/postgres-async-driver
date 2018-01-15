@@ -28,7 +28,6 @@ public class DatabaseConfig {
     String username;
     String password;
     String database;
-    boolean pipeline;
     int poolSize;
     int connectTimeout;
     int statementTimeout;

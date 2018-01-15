@@ -105,11 +105,6 @@ public class ConnectionPoolBuilder {
         return this;
     }
 
-    public ConnectionPoolBuilder pipeline(boolean pipeline) {
-        configBuilder.pipeline(pipeline);
-        return this;
-    }
-
     public ConnectionPoolBuilder connectTimeout(long value, TimeUnit timeUnit) {
         configBuilder.connectTimeout((int) timeUnit.toMillis(value));
         return this;

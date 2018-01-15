@@ -15,7 +15,7 @@ public class AuthenticationTest {
     public static DatabaseRule dbr = new DatabaseRule(createPoolBuilder(1));
 
     @Test
-    public void shouldThrowExceptionOnInvalidCredentials() throws Exception {
+    public void shouldThrowExceptionOnInvalidCredentials() {
         ConnectionPool pool = dbr.builder.password("_invalid_").build();
         try {
             pool.queryRows("SELECT 1").toBlocking().first();

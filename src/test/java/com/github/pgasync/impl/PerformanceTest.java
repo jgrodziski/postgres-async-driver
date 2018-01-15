@@ -69,7 +69,7 @@ public class PerformanceTest {
         this.poolSize = poolSize;
         this.numThreads = numThreads;
         this.pipeline = pipeline;
-        dbPool = DatabaseRule.createPoolBuilder(poolSize).pipeline(pipeline).build();
+        dbPool = DatabaseRule.createPoolBuilder(poolSize).build();
         threadPool = Executors.newFixedThreadPool(numThreads);
     }
 
