@@ -9,7 +9,7 @@
 
     <groupId>com.github.jaceksokol</groupId>
     <artifactId>postgres-async-driver</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.4-SNAPSHOT</version>
 
     <name>postgres-async-driver</name>
     <description>Asynchronous PostgreSQL Java driver</description>
