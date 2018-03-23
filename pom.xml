@@ -7,14 +7,14 @@
         <version>9</version>
     </parent>
 
-    <groupId>com.github.jaceksokol</groupId>
+    <groupId>com.github.jgrodziski</groupId>
     <artifactId>postgres-async-driver</artifactId>
     <version>0.1.4-SNAPSHOT</version>
 
     <name>postgres-async-driver</name>
     <description>Asynchronous PostgreSQL Java driver</description>
 
-    <url>https://github.com/jaceksokol/postgres-async-driver</url>
+    <url>https://github.com/jgrodziski/postgres-async-driver</url>
     <inceptionYear>2014</inceptionYear>
     <developers>
         <developer>
@@ -25,6 +25,10 @@
             <name>Jacek Sokol</name>
             <url>https://github.com/jaceksokol</url>
         </developer>
+        <developer>
+            <name>Jérémie Grodziski</name>
+            <url>https://github.com/jgrodziski</url>
+        </developer>
     </developers>
     <licenses>
         <license>
@@ -34,13 +38,13 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:git@github.com:jaceksokol/postgres-async-driver.git</connection>
-        <developerConnection>scm:git:git@github.com:jaceksokol/postgres-async-driver.git</developerConnection>
-        <url>git@github.com:jaceksokol/postgres-async-driver.git</url>
+        <connection>scm:git:git@github.com:jgrodziski/postgres-async-driver.git</connection>
+        <developerConnection>scm:git:git@github.com:jgrodziski/postgres-async-driver.git</developerConnection>
+        <url>git@github.com:jgrodziski/postgres-async-driver.git</url>
     </scm>
     <issueManagement>
         <system>github</system>
-        <url>https://github.com/jaceksokol/postgres-async-driver/issues</url>
+        <url>https://github.com/jgrodziski/postgres-async-driver/issues</url>
     </issueManagement>
 
     <prerequisites>
