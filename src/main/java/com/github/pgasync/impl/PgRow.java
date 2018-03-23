@@ -231,6 +231,10 @@ public class PgRow implements Row {
         return column;
     }
 
+    public Map<String, PgColumn> getColumns(){
+        return columns;
+    }
+
     public static PgRow create(DataRow data, Map<String, PgColumn> columns, DataConverter dataConverter) {
         Collection<PgColumn> values = columns.values();
         return new PgRow(data, dataConverter, columns, values.toArray(new PgColumn[values.size()]));
